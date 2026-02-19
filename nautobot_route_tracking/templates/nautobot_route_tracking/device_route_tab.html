@@ -1,0 +1,27 @@
+{% extends "generic/object_detail.html" %}
+{% load render_table from django_tables2 %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <strong><i class="mdi mdi-routes"></i> Route Entries for {{ object.name }}</strong>
+    </div>
+    <div class="card-body">
+        {% if table.data %}
+            <div class="table-responsive">
+                {% render_table table "inc/table.html" %}
+            </div>
+            {% include 'inc/paginator.html' with paginator=table.paginator page=table.page %}
+        {% else %}
+            <p class="text-muted mb-0">No route entries found for this device.</p>
+        {% endif %}
+    </div>
+    {% if table.data %}
+    <div class="card-footer text-center">
+        <a href="{% url 'plugins:nautobot_route_tracking:routeentry_list' %}?device={{ object.pk }}" class="btn btn-outline-primary btn-sm">
+            View all routes for {{ object.name }} <i class="mdi mdi-arrow-right"></i>
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
