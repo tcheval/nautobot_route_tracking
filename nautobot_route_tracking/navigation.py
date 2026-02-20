@@ -9,7 +9,6 @@ References:
 """
 
 from nautobot.apps.ui import (
-    NavMenuAddButton,
     NavMenuGroup,
     NavMenuItem,
     NavMenuTab,
@@ -28,12 +27,7 @@ menu_items = (
                         link="plugins:nautobot_route_tracking:routeentry_list",
                         name="Route Entries",
                         permissions=["nautobot_route_tracking.view_routeentry"],
-                        buttons=(
-                            NavMenuAddButton(
-                                link="plugins:nautobot_route_tracking:routeentry_add",
-                                permissions=["nautobot_route_tracking.add_routeentry"],
-                            ),
-                        ),
+                        buttons=(),
                         weight=100,
                     ),
                 ),

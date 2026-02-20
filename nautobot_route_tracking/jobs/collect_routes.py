@@ -40,7 +40,6 @@ from nornir_napalm.plugins.tasks import napalm_cli
 from nautobot_route_tracking.jobs._base import BaseCollectionJob, _extract_nornir_error
 from nautobot_route_tracking.models import RouteEntry, is_excluded_route
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -412,7 +411,9 @@ class CollectRoutesJob(BaseCollectionJob):
             "devices_skipped": 0,
             "routes_updated": 0,
             "routes_created": 0,
-            "routes_skipped": 0,
+            "routes_excluded": 0,
+            "routes_dryrun": 0,
+            "routes_invalid": 0,
         }
 
         job_start = time.monotonic()
@@ -577,13 +578,15 @@ class CollectRoutesJob(BaseCollectionJob):
                 # Process routes within a single atomic block per device
                 device_updated = 0
                 device_created = 0
-                device_skipped = 0
+                device_excluded = 0
+                device_dryrun = 0
+                device_invalid = 0
 
                 with transaction.atomic():
                     for prefix, nexthops in routes.items():
                         # Exclude unwanted prefixes (multicast, link-local, loopback)
                         if is_excluded_route(prefix):
-                            device_skipped += 1
+                            device_excluded += 1
                             if debug_mode:
                                 self.logger.debug(
                                     "Skipping excluded prefix: %s",
@@ -597,7 +600,7 @@ class CollectRoutesJob(BaseCollectionJob):
 
                         for nexthop in nexthops:
                             if not isinstance(nexthop, dict):
-                                device_skipped += 1
+                                device_invalid += 1
                                 continue
 
                             protocol = nexthop.get("protocol", "unknown").lower() or "unknown"
@@ -632,7 +635,7 @@ class CollectRoutesJob(BaseCollectionJob):
                                 vrf_obj = vrf_cache[routing_table]
 
                             if not commit:
-                                device_skipped += 1
+                                device_dryrun += 1
                                 if debug_mode:
                                     self.logger.debug(
                                         "DRY-RUN: prefix=%s proto=%s nh=%s metric=%d vrf=%s",
@@ -659,7 +662,7 @@ class CollectRoutesJob(BaseCollectionJob):
                                     routing_table=routing_table,
                                 )
                             except (ValueError, ValidationError) as exc:
-                                device_skipped += 1
+                                device_invalid += 1
                                 if debug_mode:
                                     self.logger.debug(
                                         "Skipping invalid route %s: %s",
@@ -676,23 +679,27 @@ class CollectRoutesJob(BaseCollectionJob):
 
                 if commit:
                     self.logger.info(
-                        "Routes: %d created, %d updated, %d skipped",
+                        "Routes: %d created, %d updated, %d excluded, %d invalid",
                         device_created,
                         device_updated,
-                        device_skipped,
+                        device_excluded,
+                        device_invalid,
                         extra={"grouping": device_name, "object": device_obj},
                     )
                 else:
                     self.logger.info(
-                        "DRY-RUN: Would process %d prefix(es) (%d nexthop entries skipped)",
+                        "DRY-RUN: %d prefix(es), %d nexthops, %d excluded",
                         len(routes),
-                        device_skipped,
+                        device_dryrun,
+                        device_excluded,
                         extra={"grouping": device_name, "object": device_obj},
                     )
 
                 stats["routes_created"] += device_created
                 stats["routes_updated"] += device_updated
-                stats["routes_skipped"] += device_skipped
+                stats["routes_excluded"] += device_excluded
+                stats["routes_dryrun"] += device_dryrun
+                stats["routes_invalid"] += device_invalid
                 stats["devices_success"] += 1
 
             except Exception as exc:
@@ -716,19 +723,22 @@ class CollectRoutesJob(BaseCollectionJob):
             f"{stats['devices_skipped']} skipped | "
             f"Routes: {stats['routes_created']} created, "
             f"{stats['routes_updated']} updated, "
-            f"{stats['routes_skipped']} skipped"
+            f"{stats['routes_excluded']} excluded, "
+            f"{stats['routes_invalid']} invalid"
+            + (f", {stats['routes_dryrun']} dry-run" if stats["routes_dryrun"] else "")
         )
 
         self.logger.info(
             "Job completed in %.1fs — devices: %d success / %d failed / %d skipped "
-            "| routes: %d created / %d updated / %d skipped",
+            "| routes: %d created / %d updated / %d excluded / %d invalid",
             job_elapsed,
             stats["devices_success"],
             stats["devices_failed"],
             stats["devices_skipped"],
             stats["routes_created"],
             stats["routes_updated"],
-            stats["routes_skipped"],
+            stats["routes_excluded"],
+            stats["routes_invalid"],
             extra={"grouping": "summary"},
         )
 

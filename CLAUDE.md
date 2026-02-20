@@ -6,7 +6,7 @@ For specifications, see **[docs/SPECIFICATIONS.md](docs/SPECIFICATIONS.md)** —
 
 ## Project Overview
 
-**nautobot-route-tracking** is a Nautobot plugin that collects and historizes routing table entries from network devices via NAPALM `get_route_to()`. It follows the same UPDATE/INSERT logic as [nautobot-netdb-tracking](https://github.com/tcheval/nautobot-netdb-tracking), tracking route changes over time with full history.
+**nautobot-route-tracking** is a Nautobot plugin that collects and historizes routing table entries from network devices via NAPALM CLI commands (`napalm_cli`). It follows the same UPDATE/INSERT logic as [nautobot-netdb-tracking](https://github.com/tcheval/nautobot-netdb-tracking), tracking route changes over time with full history.
 
 ### Key Objectives
 
@@ -115,32 +115,36 @@ class RouteEntry(PrimaryModel):
 - ECMP = two rows with same `(device, vrf, network, protocol)` but different `next_hop`
 - Protocol normalized to **lowercase** before storage (EOS returns `"OSPF"`, IOS returns `"ospf"`)
 
-## NAPALM Collection (NAPALM-only, no fallback)
+## NAPALM CLI Collection (platform-specific, no fallback)
+
+Collection uses `napalm_cli` with platform-specific commands (not `napalm_get`/`get_route_to()`):
+
+- **Arista EOS**: `show ip route | json` → structured JSON, parsed directly by `_parse_eos_routes()`
+- **Cisco IOS**: `show ip route` → text output, parsed via TextFSM (`ntc-templates`)
 
 ```python
-# Single call — no protocol loop, NAPALM handles all protocols at once
-result = task.run(
-    task=napalm_get,
-    getters=["get_route_to"],
-    getters_options={"get_route_to": {"destination": "", "protocol": ""}},
-    severity_level=20,
-)
-routes = result.result.get("get_route_to", {})
-# routes: Dict[prefix_str, List[nexthop_dict]]
+# EOS example
+sub_result = task.run(task=napalm_cli, commands=["show ip route | json"], severity_level=logging.DEBUG)
+routes = _parse_eos_routes(sub_result[0].result["show ip route | json"])
+
+# IOS example
+sub_result = task.run(task=napalm_cli, commands=["show ip route"], severity_level=logging.DEBUG)
+routes = _parse_ios_routes(sub_result[0].result["show ip route"])
+# routes: dict[prefix_str, list[nexthop_dict]]
 ```
 
-**Key NAPALM return format facts**:
+**Key facts**:
 - Each prefix maps to a **list** of next-hop dicts (ECMP = multiple entries in the list)
-- `protocol` field: uppercase on EOS (`"OSPF"`), lowercase on IOS (`"ospf"`) → normalize with `.lower()`
+- EOS `routeType` values (e.g. `"eBGP"`, `"ospfExt1"`) are normalized via `_EOS_PROTOCOL_MAP`
+- IOS protocol codes (e.g. `"O"`, `"B"`, `"S"`) are normalized via `_IOS_PROTOCOL_MAP`
 - Arista EOS CONNECTED routes: `next_hop` can be empty string `""` → `outgoing_interface` carries the interface
-- JunOS: `routing_table` returns `"inet.0"` instead of `"default"` → store raw value
+- VRF routing tables: EOS returns VRF names from `show ip route vrf all`, IOS TextFSM extracts VRF field
 
 **Excluded prefixes** (defined in `models.py`):
 
 ```python
 EXCLUDED_ROUTE_NETWORKS: tuple[str, ...] = (
-    "224.0.0.0/4",    # IPv4 Multicast
-    "239.0.0.0/8",    # IPv4 Multicast local
+    "224.0.0.0/4",    # IPv4 Multicast (includes 239.0.0.0/8)
     "169.254.0.0/16", # IPv4 Link-local
     "127.0.0.0/8",    # IPv4 Loopback
     "ff00::/8",       # IPv6 Multicast

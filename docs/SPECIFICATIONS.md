@@ -71,6 +71,13 @@ class Meta:
             fields=["device", "vrf", "network", "next_hop", "protocol"],
             name="nautobot_route_tracking_routeentry_unique_route",
         ),
+        # PostgreSQL treats NULL as distinct in UNIQUE constraints, so
+        # vrf=NULL rows are not protected by the constraint above.
+        models.UniqueConstraint(
+            fields=["device", "network", "next_hop", "protocol"],
+            condition=models.Q(vrf__isnull=True),
+            name="nautobot_route_tracking_routeentry_unique_route_no_vrf",
+        ),
     ]
     indexes = [
         models.Index(fields=["device", "last_seen"], name="idx_route_device_lastseen"),
@@ -81,7 +88,7 @@ class Meta:
     ]
 ```
 
-**Note UniqueConstraint** : `vrf=NULL` est traité comme une valeur distincte par PostgreSQL — deux routes identiques avec `vrf=NULL` vs `vrf=<obj>` seront deux entrées différentes. C'est le comportement attendu.
+**Note UniqueConstraint** : PostgreSQL traite `NULL` comme distinct dans les contraintes UNIQUE — la contrainte principale ne protège pas les lignes `vrf=NULL`. Le partial index `unique_route_no_vrf` couvre ce cas. `select_for_update()` est utilisé dans `update_or_create_entry()` pour empêcher les race conditions TOCTOU.
 
 ### `clean()`
 
@@ -180,33 +187,35 @@ def update_or_create_entry(
 
 ## 2. Collection Strategy
 
-### Méthode principale
+### Méthode principale — NAPALM CLI (platform-specific)
+
+La collecte utilise `napalm_cli` avec des commandes spécifiques par plateforme :
+
+- **Arista EOS** : `show ip route | json` → JSON structuré, parsé directement par `_parse_eos_routes()`
+- **Cisco IOS** : `show ip route` → texte, parsé via TextFSM (`ntc-templates`, template `cisco_ios_show_ip_route`)
 
 ```python
-# NAPALM get_route_to() — tous protocoles, toutes destinations
-result = task.run(
-    task=napalm_get,
-    getters=["get_route_to"],
-    getters_options={
-        "get_route_to": {
-            "destination": "",   # toutes les destinations
-            "protocol": "",      # tous les protocoles
-            "longer": False,
-        }
-    },
-    severity_level=20,
-)
-routes = result.result.get("get_route_to", {})
-# routes = {"10.0.0.0/8": [{"protocol": "OSPF", "next_hop": "...", ...}, ...], ...}
+# EOS
+sub_result = task.run(task=napalm_cli, commands=["show ip route | json"], severity_level=logging.DEBUG)
+routes = _parse_eos_routes(sub_result[0].result["show ip route | json"])
+
+# IOS
+sub_result = task.run(task=napalm_cli, commands=["show ip route"], severity_level=logging.DEBUG)
+routes = _parse_ios_routes(sub_result[0].result["show ip route"])
 ```
 
-**Pas de fallback Netmiko/TextFSM** : si le driver NAPALM ne supporte pas `get_route_to()` → `Result(failed=True, result="get_route_to not supported")` + log warning + device skipped.
+**Pas de fallback** : plateformes non supportées → `Result(failed=True)` + device skipped.
 
 ### Normalisation protocole
 
+EOS retourne des valeurs `routeType` spécifiques (ex. `"eBGP"`, `"ospfExt1"`, `"ospfIntra"`) normalisées via `_EOS_PROTOCOL_MAP`. IOS retourne des codes à une lettre (ex. `"O"`, `"B"`, `"S"`) normalisés via `_IOS_PROTOCOL_MAP`.
+
 ```python
-protocol_normalized = entry.get("protocol", "unknown").lower()
-# "OSPF" → "ospf", "BGP" → "bgp", "STATIC" → "static", etc.
+# EOS : _EOS_PROTOCOL_MAP
+"ebgp" → "bgp", "ibgp" → "bgp", "ospfinter" → "ospf", "ospfext1" → "ospf", etc.
+
+# IOS : _IOS_PROTOCOL_MAP
+"O" → "ospf", "B" → "bgp", "S" → "static", "C" → "connected", etc.
 ```
 
 ### Gestion ECMP
@@ -227,8 +236,7 @@ Routes CONNECTED et LOCAL retournent souvent `next_hop=""` dans NAPALM (Arista E
 
 ```python
 EXCLUDED_ROUTE_NETWORKS: tuple[str, ...] = (
-    "224.0.0.0/4",     # IPv4 Multicast
-    "239.0.0.0/8",     # IPv4 Multicast local
+    "224.0.0.0/4",     # IPv4 Multicast (includes 239.0.0.0/8)
     "169.254.0.0/16",  # IPv4 Link-local
     "127.0.0.0/8",     # IPv4 Loopback
     "ff00::/8",        # IPv6 Multicast
@@ -237,7 +245,7 @@ EXCLUDED_ROUTE_NETWORKS: tuple[str, ...] = (
 )
 ```
 
-Filtrage via `ipaddress.ip_network(prefix).overlaps(excluded_net)` ou simple `startswith` sur le prefix string.
+Filtrage via `ipaddress.ip_network().subnet_of()` avec vérification de version IP (IPv4 vs IPv6).
 
 ### Résolution VRF
 
@@ -293,9 +301,9 @@ Résultat :
 **Meta** :
 ```python
 class Meta:
-    name = "Collect Routing Tables"
+    name = "Collect Route Tables"
     grouping = "Route Tracking"
-    description = "Collect routing table entries from network devices using NAPALM"
+    description = "Collect routing table entries from network devices via NAPALM CLI"
     has_sensitive_variables = False
     soft_time_limit = 3600
     time_limit = 7200
@@ -319,24 +327,17 @@ class Meta:
 5. Log summary
 6. `RuntimeError` si `devices_success == 0 AND devices_failed > 0`
 
-**`collect_routes_task(task)`** :
+**`_collect_routes_task(task)`** — dispatche par plateforme :
 ```python
-def collect_routes_task(task: Task) -> Result:
-    host = task.host
-    try:
-        result = task.run(
-            task=napalm_get,
-            getters=["get_route_to"],
-            getters_options={"get_route_to": {"destination": "", "protocol": ""}},
-            severity_level=20,
-        )
-        routes = result.result.get("get_route_to", {})
-        return Result(host=host, result=routes)
-    except NornirSubTaskError as exc:
-        root_cause = _extract_nornir_error(exc)
-        return Result(host=host, failed=True, result=f"get_route_to failed: {root_cause}")
-    except Exception as exc:
-        return Result(host=host, failed=True, result=f"Collection failed: {exc}")
+def _collect_routes_task(task: Task) -> Result:
+    platform = task.host.platform or ""
+    if platform == "arista_eos":
+        return _collect_routes_eos(task)   # show ip route | json
+    elif platform == "cisco_ios":
+        return _collect_routes_ios(task)   # show ip route + TextFSM
+    else:
+        return Result(host=task.host, failed=True,
+                      result=f"Unsupported platform: {platform!r}")
 ```
 
 **`process_routes(device, routes_dict)`** :
@@ -503,17 +504,22 @@ class RouteEntryUIViewSet(NautobotUIViewSet):
     action_buttons = ("export",)
 ```
 
-### API REST
+### API REST (read-only)
 
 ```python
 # api/serializers.py
 class RouteEntrySerializer(NautobotModelSerializer):
+    device = NestedDeviceSerializer()
+    vrf = NestedVRFSerializer(required=False, allow_null=True)
+    outgoing_interface = NestedInterfaceSerializer(required=False, allow_null=True)
     class Meta:
         model = RouteEntry
-        fields = "__all__"
+        fields = [...]  # all fields
+        read_only_fields = ["first_seen", "last_seen", "created", "last_updated"]
 
-# api/views.py
+# api/views.py — read-only (writes bypass NetDB logic)
 class RouteEntryViewSet(NautobotModelViewSet):
+    http_method_names = ["get", "head", "options"]
     queryset = RouteEntry.objects.select_related(
         "device", "vrf", "outgoing_interface"
     ).prefetch_related("tags")
@@ -521,12 +527,9 @@ class RouteEntryViewSet(NautobotModelViewSet):
     filterset_class = RouteEntryFilterSet
 ```
 
-Endpoints :
+Endpoints (read-only) :
 - `GET /api/plugins/route-tracking/routes/` — liste paginée
 - `GET /api/plugins/route-tracking/routes/<uuid>/` — détail
-- `POST /api/plugins/route-tracking/routes/` — créer
-- `PATCH /api/plugins/route-tracking/routes/<uuid>/` — modifier
-- `DELETE /api/plugins/route-tracking/routes/<uuid>/` — supprimer
 
 ### Device tab — `template_content.py`
 

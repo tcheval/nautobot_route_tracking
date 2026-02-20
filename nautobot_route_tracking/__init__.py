@@ -1,8 +1,9 @@
 """Nautobot Route Tracking Plugin.
 
 This plugin collects and historizes routing table entries from network devices
-via NAPALM get_route_to(). It follows the same UPDATE/INSERT logic as
-nautobot-netdb-tracking, tracking route changes over time with full history.
+via NAPALM CLI commands (platform-specific: EOS JSON, IOS TextFSM). It follows
+the same UPDATE/INSERT logic as nautobot-netdb-tracking, tracking route changes
+over time with full history.
 
 Key Features:
 - Historical tracking with 90-day retention
@@ -62,11 +63,17 @@ class NautobotRouteTrackingConfig(NautobotAppConfig):
     def _fix_job_grouping() -> None:
         """Ensure plugin jobs are grouped under 'Route Tracking'.
 
-        Nautobot's register_jobs() resets grouping to the module path on startup.
-        This method runs on every startup via ready() to fix the grouping.
+        Nautobot's ``register_jobs()`` resets grouping to the module path on
+        every startup.  This must run in ``ready()`` (not just ``post_migrate``)
+        because the grouping is overwritten on every process start, not only
+        after migrations.
 
-        Uses QuerySet.update() to bypass validated_save() which would overwrite
-        the grouping field.
+        The DB query is a single UPDATE (~<1 ms) and is wrapped in try/except
+        so it is harmless when the database is unreachable (e.g.
+        ``makemigrations`` or ``showmigrations``).
+
+        Uses ``QuerySet.update()`` instead of ``validated_save()`` because the
+        latter would overwrite the grouping field right back.
         """
         from django.db import OperationalError, ProgrammingError
 

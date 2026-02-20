@@ -1,7 +1,7 @@
 """Data models for Route Tracking plugin.
 
 This module defines the RouteEntry model for tracking routing table entries
-collected from network devices via NAPALM get_route_to().
+collected from network devices via NAPALM CLI commands.
 
 Key Principle (NetDB Logic):
 - UPDATE last_seen if (device, vrf, network, next_hop, protocol) combination exists
@@ -10,7 +10,7 @@ Key Principle (NetDB Logic):
 References:
 - Nautobot Models: https://docs.nautobot.com/projects/core/en/stable/development/core/models/
 - PrimaryModel: https://docs.nautobot.com/projects/core/en/stable/development/apps/api/models/
-- NAPALM get_route_to(): https://napalm.readthedocs.io/en/latest/base.html#napalm.base.base.NetworkDriver.get_route_to
+- NAPALM CLI: https://napalm.readthedocs.io/en/latest/base.html#napalm.base.base.NetworkDriver.cli
 
 """
 
@@ -27,8 +27,7 @@ from nautobot.dcim.models import Device, Interface
 # ---------------------------------------------------------------------------
 
 EXCLUDED_ROUTE_NETWORKS: tuple[str, ...] = (
-    "224.0.0.0/4",  # IPv4 Multicast
-    "239.0.0.0/8",  # IPv4 Multicast local
+    "224.0.0.0/4",  # IPv4 Multicast (includes 239.0.0.0/8)
     "169.254.0.0/16",  # IPv4 Link-local
     "127.0.0.0/8",  # IPv4 Loopback
     "ff00::/8",  # IPv6 Multicast
@@ -308,6 +307,7 @@ class RouteEntry(PrimaryModel):
                 existing.metric = metric
                 existing.admin_distance = admin_distance
                 existing.is_active = is_active
+                existing.prefix_length = prefix_length
                 existing.routing_table = routing_table
                 existing.outgoing_interface = outgoing_interface
                 existing.validated_save()

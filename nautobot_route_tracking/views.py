@@ -20,15 +20,17 @@ from nautobot.dcim.models import Device
 
 from nautobot_route_tracking.api.serializers import RouteEntrySerializer
 from nautobot_route_tracking.filters import RouteEntryFilterSet
-from nautobot_route_tracking.forms import RouteEntryFilterForm, RouteEntryForm
+from nautobot_route_tracking.forms import RouteEntryFilterForm
 from nautobot_route_tracking.models import RouteEntry
 from nautobot_route_tracking.tables import RouteEntryDeviceTable, RouteEntryTable
 
 
 class RouteEntryUIViewSet(NautobotUIViewSet):
-    """UI ViewSet for RouteEntry model.
+    """UI ViewSet for RouteEntry model (read-only).
 
-    Provides list, detail, create, edit, delete, and bulk views.
+    Route entries are created exclusively by collection jobs. Manual
+    create/edit is disabled — no form_class is set and no add button
+    is exposed in the navigation.
 
     See: https://docs.nautobot.com/projects/core/en/stable/development/apps/api/views/nautobotuiviewset/
     """
@@ -42,10 +44,9 @@ class RouteEntryUIViewSet(NautobotUIViewSet):
     filterset_class = RouteEntryFilterSet
     filterset_form_class = RouteEntryFilterForm
     table_class = RouteEntryTable
-    form_class = RouteEntryForm
     serializer_class = RouteEntrySerializer
 
-    # Action buttons for the list view
+    # Read-only: only export, no add/edit/delete/bulk buttons
     action_buttons = ("export",)
 
     # Lookup field for detail views
@@ -89,6 +90,6 @@ class DeviceRouteTabView(LoginRequiredMixin, PermissionRequiredMixin, View):
             {
                 "object": device,
                 "table": table,
-                "tab": "routes",
+                "active_tab": "routes",
             },
         )
