@@ -211,6 +211,48 @@ nautobot_route_tracking/
         └── device_route_panel.html
 ```
 
+## Convention NAPALM dans les Jobs Nautobot
+
+**Règle absolue** : Ne JAMAIS importer ou instancier `napalm` directement dans les Jobs.
+
+### Pattern utilisé : Nornir + nornir_napalm (parallèle)
+
+Ce projet utilise **Nornir** pour la collecte parallèle. L'accès NAPALM passe par
+`nornir_napalm.plugins.tasks.napalm_cli`, qui résout automatiquement le driver via
+les connection options Nornir configurées depuis le SSoT Nautobot :
+
+```python
+from nornir_napalm.plugins.tasks import napalm_cli
+
+# Dans une task Nornir — NAPALM driver résolu via Platform.napalm_driver
+sub_result = task.run(task=napalm_cli, commands=["show ip route | json"])
+```
+
+- **Credentials** : résolus via `CredentialsNautobotSecrets` (SecretsGroup du device)
+- **Driver NAPALM** : résolu via `Platform.napalm_driver` (ex. `"eos"`, `"ios"`)
+- **optional_args** : résolus via `Platform.napalm_args` (ex. `{"transport": "ssh"}`)
+
+### Pattern alternatif : device.get_napalm_device() (séquentiel)
+
+Pour les jobs qui n'utilisent pas Nornir (un seul device à la fois) :
+
+```python
+device = Device.objects.get(...)
+driver = device.get_napalm_device(optional_args={})
+driver.open()
+try:
+    result = driver.get_facts()
+finally:
+    driver.close()
+```
+
+### Interdit
+
+- `import napalm` / `from napalm import get_network_driver`
+- `napalm.get_network_driver(...)` — instanciation manuelle du driver
+- Credentials manuels (variables, env vars, fichiers, strings en dur)
+- `subprocess.run(["napalm", ...])` — appel CLI via subprocess
+
 ## Critical Pitfalls
 
 ### `register_jobs` — OBLIGATOIRE dans `jobs/__init__.py`
