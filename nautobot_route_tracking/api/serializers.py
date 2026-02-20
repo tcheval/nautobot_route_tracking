@@ -9,8 +9,6 @@ References:
 """
 
 from nautobot.apps.api import NautobotModelSerializer
-from nautobot.dcim.api.serializers import NestedDeviceSerializer, NestedInterfaceSerializer
-from nautobot.ipam.api.serializers import NestedVRFSerializer
 
 from nautobot_route_tracking.models import RouteEntry
 
@@ -18,16 +16,12 @@ from nautobot_route_tracking.models import RouteEntry
 class RouteEntrySerializer(NautobotModelSerializer):
     """API Serializer for RouteEntry model.
 
-    Provides full serialization of routing table entry records with nested
-    representations for device, VRF, and outgoing interface FKs (instead
-    of bare UUIDs).
+    NautobotModelSerializer automatically provides nested representations
+    for FK fields (device, vrf, outgoing_interface) with id, url, and
+    display fields. No explicit nested serializers needed in Nautobot 3.x.
 
     See: https://docs.nautobot.com/projects/core/en/stable/development/apps/api/serializers/
     """
-
-    device = NestedDeviceSerializer()
-    vrf = NestedVRFSerializer(required=False, allow_null=True)
-    outgoing_interface = NestedInterfaceSerializer(required=False, allow_null=True)
 
     class Meta:
         """Serializer metadata."""
