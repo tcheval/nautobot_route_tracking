@@ -171,7 +171,7 @@ EXCLUDED_ROUTE_NETWORKS: tuple[str, ...] = (
 
 **Device selection priority**: `device` > `dynamic_group` > `role`/`location`/`tag`
 
-**Supported platforms**: Cisco IOS (`cisco_ios`) and Arista EOS (`arista_eos`) only. PAN-OS excluded (`get_route_to` raises `NotImplementedError` in the community driver).
+**Supported platforms**: Cisco IOS (`cisco_ios`) and Arista EOS (`arista_eos`) only. PAN-OS excluded (no structured routing table CLI output).
 
 ### PurgeOldRoutesJob
 
@@ -211,47 +211,170 @@ nautobot_route_tracking/
         └── device_route_panel.html
 ```
 
-## Convention NAPALM dans les Jobs Nautobot
+## Convention Nornir / NAPALM (OBLIGATOIRE)
 
-**Règle absolue** : Ne JAMAIS importer ou instancier `napalm` directement dans les Jobs.
+Ce projet utilise **exclusivement** Nornir + nornir_napalm pour l'accès réseau.
+Tout le SSoT (credentials, drivers, optional_args) est résolu via Nautobot.
 
-### Pattern utilisé : Nornir + nornir_napalm (parallèle)
+### ✅ Pattern obligatoire (MUST)
 
-Ce projet utilise **Nornir** pour la collecte parallèle. L'accès NAPALM passe par
-`nornir_napalm.plugins.tasks.napalm_cli`, qui résout automatiquement le driver via
-les connection options Nornir configurées depuis le SSoT Nautobot :
+**Héritage** : tout Job de collecte réseau DOIT hériter de `BaseCollectionJob` (`jobs/_base.py`).
+
+**Initialisation Nornir** — via `BaseCollectionJob.initialize_nornir()` :
 
 ```python
+# Inventaire : NautobotORMInventory (résout queryset → hosts Nornir)
+from nautobot_plugin_nornir.plugins.inventory.nautobot_orm import NautobotORMInventory
+# Enregistré comme : InventoryPluginRegister.register("nautobot-inventory", NautobotORMInventory)
+
+# Credentials : SecretsGroup du device, résolu par :
+# nautobot_plugin_nornir.plugins.credentials.nautobot_secrets.CredentialsNautobotSecrets
+
+# Connection options injectées par initialize_nornir() :
+{
+    "napalm": {"extras": {"timeout": timeout, "optional_args": {"transport": "ssh"}}},
+    "netmiko": {"extras": {"timeout": timeout, "session_timeout": timeout, ...}},
+}
+
+# Driver NAPALM : patché post-init via Platform.napalm_driver (ex. "eos", "ios")
+# optional_args : mergés depuis Platform.napalm_args
+```
+
+**Task Nornir** — `napalm_cli` uniquement (pas `napalm_get`) :
+
+```python
+# collect_routes.py — task module-level (obligatoire pour sérialisation Nornir)
 from nornir_napalm.plugins.tasks import napalm_cli
 
-# Dans une task Nornir — NAPALM driver résolu via Platform.napalm_driver
-sub_result = task.run(task=napalm_cli, commands=["show ip route | json"])
+def _collect_routes_eos(task: Task) -> Result:
+    sub_result = task.run(
+        task=napalm_cli,
+        commands=["show ip route | json"],
+        severity_level=logging.DEBUG,
+    )
+    raw = sub_result[0].result  # dict[str, str] : {command: output}
+    routes = _parse_eos_routes(raw["show ip route | json"])
+    return Result(host=task.host, result=routes)
 ```
 
-- **Credentials** : résolus via `CredentialsNautobotSecrets` (SecretsGroup du device)
-- **Driver NAPALM** : résolu via `Platform.napalm_driver` (ex. `"eos"`, `"ios"`)
-- **optional_args** : résolus via `Platform.napalm_args` (ex. `{"transport": "ssh"}`)
-
-### Pattern alternatif : device.get_napalm_device() (séquentiel)
-
-Pour les jobs qui n'utilisent pas Nornir (un seul device à la fois) :
+**Exécution** — un seul `nr.run()`, jamais de boucle séquentielle :
 
 ```python
-device = Device.objects.get(...)
-driver = device.get_napalm_device(optional_args={})
-driver.open()
-try:
-    result = driver.get_facts()
-finally:
-    driver.close()
+# collect_routes.py — CollectRoutesJob.run()
+nr = self.initialize_nornir(devices=devices, workers=workers, timeout=timeout)
+results = nr.run(task=_collect_routes_task, severity_level=logging.DEBUG)
+# Nornir gère les connexions — pas besoin de nr.close_connections()
 ```
 
-### Interdit
+**Gestion d'erreurs** — `_extract_nornir_error()` pour les NornirSubTaskError :
 
-- `import napalm` / `from napalm import get_network_driver`
-- `napalm.get_network_driver(...)` — instanciation manuelle du driver
-- Credentials manuels (variables, env vars, fichiers, strings en dur)
-- `subprocess.run(["napalm", ...])` — appel CLI via subprocess
+```python
+from nautobot_route_tracking.jobs._base import _extract_nornir_error
+
+except NornirSubTaskError as exc:
+    root_cause = _extract_nornir_error(exc)  # itère le MultiResult
+    return Result(host=task.host, failed=True, result=root_cause)
+```
+
+**Filtres queryset** — dans `BaseCollectionJob.get_target_devices()` :
+
+```python
+# Filtre sur platform__network_driver__in=SUPPORTED_PLATFORMS (pas napalm_driver)
+queryset = queryset.filter(platform__network_driver__in=SUPPORTED_PLATFORMS)
+# SUPPORTED_PLATFORMS = ("cisco_ios", "arista_eos") — défini dans models.py
+```
+
+**Logging** — toujours `self.logger`, jamais `print()` ou `logging.getLogger()` :
+
+```python
+self.logger.info("Message", extra={"grouping": device_name, "object": device_obj})
+```
+
+### ❌ Interdit dans les Jobs (MUST NOT)
+
+```python
+# 1. Import direct de napalm
+import napalm                              # INTERDIT
+from napalm import get_network_driver       # INTERDIT
+
+# 2. Instanciation manuelle d'un driver NAPALM
+driver = napalm.get_network_driver("ios")   # INTERDIT
+device = driver("10.0.0.1", "admin", "pw")  # INTERDIT
+
+# 3. device.get_napalm_device() — pas notre pattern, on passe par Nornir
+driver = device.get_napalm_device()         # INTERDIT dans ce projet
+
+# 4. Inventaire Nornir statique (SimpleInventory, dict hosts)
+nr = InitNornir(inventory={"plugin": "SimpleInventory", ...})  # INTERDIT
+
+# 5. Credentials manuels
+nr.inventory.defaults.username = "admin"    # INTERDIT
+nr.inventory.defaults.password = "secret"   # INTERDIT
+os.environ["SSH_PASSWORD"]                  # INTERDIT
+
+# 6. Appel subprocess
+subprocess.run(["napalm", ...])             # INTERDIT
+
+# 7. napalm_get (utiliser napalm_cli avec parsing platform-specific)
+from nornir_napalm.plugins.tasks import napalm_get  # INTERDIT
+task.run(task=napalm_get, getters=["get_route_to"]) # INTERDIT
+
+# 8. Boucle séquentielle sur les devices
+for device in devices:                      # INTERDIT
+    nr.run(task=..., on=device)             # → un seul nr.run() parallèle
+
+# 9. print() pour le logging
+print(f"Error: {exc}")                      # INTERDIT → self.logger.error()
+```
+
+### 📋 Créer un nouveau Job de collecte (HOW TO)
+
+1. **Hériter** de `BaseCollectionJob` dans `jobs/nouveau_job.py`
+2. **Définir** `class Meta` avec `name`, `grouping = "Route Tracking"`, `soft_time_limit`, `time_limit`
+3. **Implémenter** `run()` avec signature `(self, *, device, dynamic_group, device_role, location, tag, workers, timeout, commit, debug_mode, **kwargs)`
+4. **Écrire** la task Nornir au niveau module (pas dans la classe) pour la sérialisation
+5. **Ajouter** un parser platform-specific (`_parse_xxx_routes()`) si nouveau getter
+6. **Enregistrer** dans `jobs/__init__.py` :
+
+```python
+# jobs/__init__.py — OBLIGATOIRE
+from nautobot.core.celery import register_jobs
+from .collect_routes import CollectRoutesJob
+from .nouveau_job import NouveauJob
+from .purge_old_routes import PurgeOldRoutesJob
+
+jobs = [CollectRoutesJob, NouveauJob, PurgeOldRoutesJob]
+register_jobs(*jobs)
+```
+
+7. **Ajouter un nouveau platform** : créer `_collect_xxx_<platform>(task)` + `_parse_<platform>_<data>()` + ajouter le network_driver dans `SUPPORTED_PLATFORMS` (`models.py`)
+
+### 📦 Dépendances Nornir / NAPALM
+
+| Package | Import path utilisé | Rôle |
+|---------|---------------------|------|
+| `nornir` | `nornir.InitNornir`, `nornir.core.task.{Task,Result}`, `nornir.core.exceptions.NornirSubTaskError`, `nornir.core.plugins.inventory.InventoryPluginRegister` | Framework runner + inventaire |
+| `nornir_napalm` | `nornir_napalm.plugins.tasks.napalm_cli` | Task NAPALM CLI via Nornir |
+| `nautobot-plugin-nornir` | `nautobot_plugin_nornir.plugins.inventory.nautobot_orm.NautobotORMInventory`, `...credentials.nautobot_secrets.CredentialsNautobotSecrets` | Inventaire SSoT + credentials |
+| `ntc-templates` | `ntc_templates` (pour `__file__` → path templates) | Templates TextFSM (IOS parsing) |
+| `textfsm` | `textfsm.TextFSM` | Parser TextFSM (IOS) |
+
+**Non utilisés** : `nornir_netmiko` (pas de fallback Netmiko), `nornir_utils`, `napalm` (direct).
+
+### 🔍 Checklist review Job Nornir/NAPALM
+
+- [ ] Aucun `import napalm` ni `from napalm import ...`
+- [ ] Aucun `device.get_napalm_device()` — on passe par Nornir
+- [ ] Aucun `napalm_get` — on utilise `napalm_cli` + parsing platform-specific
+- [ ] Inventaire via `NautobotORMInventory` (pas `SimpleInventory`)
+- [ ] Credentials via `CredentialsNautobotSecrets` (pas en dur, pas env vars)
+- [ ] Héritage de `BaseCollectionJob` pour les jobs de collecte
+- [ ] Un seul `nr.run()` parallèle, pas de boucle séquentielle par device
+- [ ] Erreurs loggées via `self.logger`, jamais `print()`
+- [ ] `NornirSubTaskError` traité via `_extract_nornir_error()`
+- [ ] Queryset filtre sur `platform__network_driver__in=SUPPORTED_PLATFORMS`
+- [ ] Task Nornir définie au niveau module (pas dans la classe Job)
+- [ ] Job enregistré dans `jobs/__init__.py` via `register_jobs()`
 
 ## Critical Pitfalls
 
@@ -389,9 +512,10 @@ filterset = RouteEntryFilterSet({"network": "10.0.0"})  # CharFilter = bare stri
 ### Tests jobs — mocker les appels réseau
 
 ```python
-@patch("nautobot_route_tracking.jobs.collect_routes.napalm_get")
-def test_collect_routes_job(mock_napalm_get, ...):
-    mock_napalm_get.return_value = {"get_route_to": {"10.0.0.0/24": [...]}}
+@patch("nautobot_route_tracking.jobs.collect_routes.napalm_cli")
+def test_collect_routes_job(mock_napalm_cli, ...):
+    # Mock napalm_cli pour retourner le JSON brut EOS
+    mock_napalm_cli.return_value = [MagicMock(result={"show ip route | json": '{"vrfs": ...}'})]
     ...
 ```
 
@@ -450,6 +574,6 @@ Pour les tâches complexes touchant plusieurs fichiers ou domaines indépendants
 
 ---
 
-**Last Updated**: 2026-02-18
+**Last Updated**: 2026-02-20
 
-**For AI Assistants**: This document provides the essential context for the `nautobot_route_tracking` plugin. Always prioritize Network-to-Code standards, the NetDB UPDATE/INSERT logic, and NAPALM-only collection via `get_route_to()`. For complex tasks, use swarm mode to parallelize independent work.
+**For AI Assistants**: This document provides the essential context for the `nautobot_route_tracking` plugin. Always prioritize Network-to-Code standards, the NetDB UPDATE/INSERT logic, and NAPALM CLI collection via Nornir (`napalm_cli`, not `napalm_get`). For complex tasks, use swarm mode to parallelize independent work.

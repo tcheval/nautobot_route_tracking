@@ -268,8 +268,8 @@ class BaseCollectionJob(Job):
             for t in tag:
                 queryset = queryset.filter(tags=t)
 
-        # Restrict to platforms supported by NAPALM get_route_to()
-        # PAN-OS raises NotImplementedError, so it is excluded here.
+        # Restrict to platforms with a supported napalm_cli parser
+        # (cisco_ios, arista_eos). PAN-OS has no structured routing table CLI.
         queryset = queryset.filter(platform__network_driver__in=SUPPORTED_PLATFORMS)
 
         return queryset.distinct()
