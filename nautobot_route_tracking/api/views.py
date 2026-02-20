@@ -16,10 +16,12 @@ from nautobot_route_tracking.models import RouteEntry
 
 
 class RouteEntryViewSet(NautobotModelViewSet):
-    """API ViewSet for RouteEntry model.
+    """API ViewSet for RouteEntry model (read-only).
 
-    Provides standard CRUD operations via REST API.
-    Supports filtering, pagination, and search.
+    Route entries are collected exclusively by CollectRoutesJob via the
+    update_or_create_entry() classmethod, which enforces NetDB logic
+    (normalization, deduplication, validated_save). Direct API writes are
+    disabled to prevent bypassing these invariants.
 
     See: https://docs.nautobot.com/projects/core/en/stable/development/apps/api/views/
     """
@@ -32,3 +34,4 @@ class RouteEntryViewSet(NautobotModelViewSet):
     ).prefetch_related("tags")
     serializer_class = RouteEntrySerializer
     filterset_class = RouteEntryFilterSet
+    http_method_names = ["get", "head", "options"]

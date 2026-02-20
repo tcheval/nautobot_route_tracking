@@ -46,7 +46,8 @@ try:
         NautobotORMInventory,
     )
 
-    InventoryPluginRegister.register("nautobot-inventory", NautobotORMInventory)
+    if "nautobot-inventory" not in InventoryPluginRegister.available:
+        InventoryPluginRegister.register("nautobot-inventory", NautobotORMInventory)
 except ImportError:
     NautobotORMInventory = None
 
@@ -217,11 +218,13 @@ class BaseCollectionJob(Job):
             )
             return Device.objects.filter(pk=device.pk).select_related("platform", "location")
 
-        # Base queryset: active devices with a platform configured
+        # Base queryset: active devices with a platform and primary IP configured
+        # (devices without a primary_ip4 cannot be reached via SSH)
         active_statuses = Status.objects.get_for_model(Device).filter(name__in=["Active", "Staged"])
         queryset = Device.objects.filter(
             status__in=active_statuses,
             platform__isnull=False,
+            primary_ip4__isnull=False,
         ).select_related("platform", "location", "role")
 
         # Case 2: DynamicGroup — filter to its current members
@@ -246,7 +249,7 @@ class BaseCollectionJob(Job):
         if location:
             # Include descendant locations so a parent location captures all children
             # See: https://docs.nautobot.com/projects/core/en/stable/user-guide/core-data-models/dcim/location/
-            location_ids: list[int] = []
+            location_ids: list = []
             for loc in location:
                 self.logger.info(
                     "Filtering by location: %s (including descendants)",

@@ -62,7 +62,10 @@ def is_excluded_route(network: str) -> bool:
     except ValueError:
         return False
 
-    return any(net.subnet_of(excluded) or net == excluded for excluded in _EXCLUDED_NETWORKS)
+    return any(
+        net.version == excluded.version and (net.subnet_of(excluded) or net == excluded)
+        for excluded in _EXCLUDED_NETWORKS
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +189,14 @@ class RouteEntry(PrimaryModel):
                 fields=["device", "vrf", "network", "next_hop", "protocol"],
                 name="nautobot_route_tracking_routeentry_unique_route",
             ),
+            # PostgreSQL treats NULL as distinct in UNIQUE constraints, so
+            # vrf=NULL rows are not protected by the constraint above.
+            # This partial index covers the global routing table case.
+            models.UniqueConstraint(
+                fields=["device", "network", "next_hop", "protocol"],
+                condition=models.Q(vrf__isnull=True),
+                name="nautobot_route_tracking_routeentry_unique_route_no_vrf",
+            ),
         ]
         indexes = [
             models.Index(fields=["device", "last_seen"], name="idx_route_device_lastseen"),
@@ -274,17 +285,16 @@ class RouteEntry(PrimaryModel):
         # Normalize protocol
         normalized_protocol = protocol.lower() if protocol else "unknown"
 
-        # Normalize network
+        # Normalize network — raise on invalid CIDR to prevent storing corrupt data
         try:
             net = ipaddress.ip_network(network, strict=False)
             normalized_network = str(net)
             prefix_length = net.prefixlen
-        except ValueError:
-            normalized_network = network
-            prefix_length = 0
+        except ValueError as exc:
+            raise ValueError(f"Invalid CIDR prefix: {network!r}") from exc
 
         with transaction.atomic():
-            existing = cls.objects.filter(
+            existing = cls.objects.select_for_update().filter(
                 device=device,
                 vrf=vrf,
                 network=normalized_network,
@@ -299,8 +309,7 @@ class RouteEntry(PrimaryModel):
                 existing.admin_distance = admin_distance
                 existing.is_active = is_active
                 existing.routing_table = routing_table
-                if outgoing_interface:
-                    existing.outgoing_interface = outgoing_interface
+                existing.outgoing_interface = outgoing_interface
                 existing.validated_save()
                 return existing, False
 

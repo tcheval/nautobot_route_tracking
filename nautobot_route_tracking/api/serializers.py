@@ -49,6 +49,7 @@ class RouteEntrySerializer(NautobotModelSerializer):
         ]
         read_only_fields = [
             "first_seen",
+            "last_seen",
             "created",
             "last_updated",
         ]

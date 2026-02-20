@@ -47,7 +47,7 @@ class RouteEntryForm(NautobotModelForm):
         queryset=Interface.objects.all(),
         label="Outgoing Interface",
         required=False,
-        query_params={"device_id": "$device"},
+        query_params={"device": "$device"},
     )
     last_seen = forms.DateTimeField(
         widget=DateTimePicker(),
@@ -125,9 +125,9 @@ class RouteEntryFilterForm(NautobotFilterForm):
         required=False,
         label="Next Hop (partial match)",
     )
-    is_active = forms.NullBooleanField(
+    is_active = forms.BooleanField(
         required=False,
-        widget=forms.NullBooleanSelect,
+        widget=forms.Select(choices=[("", "---------"), ("true", "Yes"), ("false", "No")]),
         label="Is Active",
     )
     routing_table = forms.CharField(

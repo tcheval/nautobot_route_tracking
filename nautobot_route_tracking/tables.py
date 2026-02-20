@@ -89,13 +89,13 @@ class RouteEntryDeviceTable(BaseTable):
     """Simplified route table for the Device detail tab.
 
     Omits the ``device`` column (implied by context) and action buttons.
+    No ToggleColumn since no bulk actions are available on this tab.
     default_columns shows the essential subset for a quick per-device overview.
 
     See: https://docs.nautobot.com/projects/core/en/stable/development/apps/api/tables/
 
     """
 
-    pk = ToggleColumn()
     vrf = tables.Column(linkify=True)
     network = tables.Column(
         attrs={"td": {"class": "text-nowrap"}},
@@ -119,7 +119,6 @@ class RouteEntryDeviceTable(BaseTable):
 
         model = RouteEntry
         fields = (
-            "pk",
             "vrf",
             "network",
             "protocol",
@@ -132,7 +131,6 @@ class RouteEntryDeviceTable(BaseTable):
             "last_seen",
         )
         default_columns = (
-            "pk",
             "network",
             "protocol",
             "next_hop",

@@ -13,6 +13,7 @@ from __future__ import annotations
 import time
 from datetime import timedelta
 
+from django.db import transaction
 from django.utils import timezone
 from nautobot.apps.jobs import BooleanVar, IntegerVar, Job
 
@@ -38,6 +39,8 @@ class PurgeOldRoutesJob(Job):
         description = "Delete route entries older than the configured retention period"
         has_sensitive_variables = False
         approval_required = False
+        soft_time_limit = 600  # 10 minutes
+        time_limit = 1200  # 20 minutes
 
     # ------------------------------------------------------------------
     # Job variables
@@ -89,28 +92,21 @@ class PurgeOldRoutesJob(Job):
             extra={"grouping": "parameters"},
         )
 
-        qs = RouteEntry.objects.filter(last_seen__lt=cutoff)
-        count = qs.count()
-
-        self.logger.info(
-            "Found %d route entry(ies) older than %d day(s)",
-            count,
-            retention_days,
-            extra={"grouping": "summary"},
-        )
-
         if commit:
-            deleted, _ = qs.delete()
+            with transaction.atomic():
+                qs = RouteEntry.objects.filter(last_seen__lt=cutoff)
+                deleted, _ = qs.delete()
             self.logger.info(
                 "Deleted %d route entry(ies)",
                 deleted,
                 extra={"grouping": "summary"},
             )
+            result_count = deleted
         else:
-            deleted = 0
+            result_count = RouteEntry.objects.filter(last_seen__lt=cutoff).count()
             self.logger.info(
                 "DRY-RUN: would delete %d route entry(ies) — no changes written",
-                count,
+                result_count,
                 extra={"grouping": "summary"},
             )
 
@@ -119,9 +115,9 @@ class PurgeOldRoutesJob(Job):
         self.logger.info(
             "%s %d record(s) in %.1fs",
             mode,
-            count,
+            result_count,
             job_elapsed,
             extra={"grouping": "summary"},
         )
 
-        return {"route_entries": deleted if commit else count}
+        return {"route_entries": result_count}

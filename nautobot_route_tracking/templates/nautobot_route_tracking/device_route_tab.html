@@ -11,7 +11,6 @@
             <div class="table-responsive">
                 {% render_table table "inc/table.html" %}
             </div>
-            {% include 'inc/paginator.html' with paginator=table.paginator page=table.page %}
         {% else %}
             <p class="text-muted mb-0">No route entries found for this device.</p>
         {% endif %}

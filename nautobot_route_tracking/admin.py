@@ -21,3 +21,5 @@ class RouteEntryAdmin(admin.ModelAdmin):
     list_filter = ["protocol", "is_active", "device"]
     search_fields = ["network", "next_hop", "device__name"]
     readonly_fields = ["first_seen", "last_seen"]
+    list_select_related = ["device", "vrf", "outgoing_interface"]
+    raw_id_fields = ["device", "vrf", "outgoing_interface"]
