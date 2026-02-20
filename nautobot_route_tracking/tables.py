@@ -49,7 +49,7 @@ class RouteEntryTable(BaseTable):
         verbose_name="Last Seen",
         format="Y-m-d H:i",
     )
-    actions = ButtonsColumn(RouteEntry)
+    actions = ButtonsColumn(RouteEntry, buttons=("changelog",))
 
     class Meta(BaseTable.Meta):
         """Table metadata."""

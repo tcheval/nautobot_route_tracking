@@ -9,7 +9,7 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from nautobot_route_tracking.models import EXCLUDED_ROUTE_NETWORKS, RouteEntry, is_excluded_route
+from nautobot_route_tracking.models import RouteEntry, is_excluded_route
 
 
 class TestIsExcludedRoute:
@@ -251,7 +251,7 @@ class TestRouteEntryNetDBLogic:
 
     def test_update_refreshes_mutable_fields(self, device):
         """Test that update_or_create_entry refreshes metric and is_active."""
-        entry1, _ = RouteEntry.update_or_create_entry(
+        _entry1, _ = RouteEntry.update_or_create_entry(
             device=device,
             network="10.5.0.0/24",
             protocol="ospf",
@@ -275,7 +275,7 @@ class TestRouteEntryNetDBLogic:
         """Test that the UniqueConstraint prevents duplicate rows."""
         from django.db import IntegrityError
 
-        RouteEntry.objects.create(
+        entry = RouteEntry(
             device=device,
             network="10.6.0.0/24",
             prefix_length=24,
@@ -283,7 +283,9 @@ class TestRouteEntryNetDBLogic:
             next_hop="192.168.1.1",
             last_seen=timezone.now(),
         )
+        entry.validated_save()
         with pytest.raises(IntegrityError):
+            # Intentionally using objects.create() to test DB-level constraint
             RouteEntry.objects.create(
                 device=device,
                 network="10.6.0.0/24",

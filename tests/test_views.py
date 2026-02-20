@@ -4,9 +4,6 @@ Tests verify the list view, detail view, and device tab view.
 """
 
 import pytest
-from django.utils import timezone
-
-from nautobot_route_tracking.models import RouteEntry
 
 
 @pytest.mark.django_db

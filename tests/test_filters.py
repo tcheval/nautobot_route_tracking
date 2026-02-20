@@ -20,7 +20,7 @@ class TestRouteEntryFilterSet:
         """Create several RouteEntry objects for filter testing."""
         now = timezone.now()
 
-        self.entry_ospf = RouteEntry.objects.create(
+        self.entry_ospf = RouteEntry(
             device=device,
             network="10.0.0.0/24",
             prefix_length=24,
@@ -32,7 +32,8 @@ class TestRouteEntryFilterSet:
             routing_table="default",
             last_seen=now,
         )
-        self.entry_static = RouteEntry.objects.create(
+        self.entry_ospf.validated_save()
+        self.entry_static = RouteEntry(
             device=device,
             network="0.0.0.0/0",
             prefix_length=0,
@@ -44,7 +45,8 @@ class TestRouteEntryFilterSet:
             routing_table="default",
             last_seen=now,
         )
-        self.entry_device2 = RouteEntry.objects.create(
+        self.entry_static.validated_save()
+        self.entry_device2 = RouteEntry(
             device=device2,
             network="172.16.0.0/16",
             prefix_length=16,
@@ -56,6 +58,7 @@ class TestRouteEntryFilterSet:
             routing_table="default",
             last_seen=now,
         )
+        self.entry_device2.validated_save()
 
     def test_no_filter_returns_all(self):
         """Test that no filter returns all RouteEntry objects."""
@@ -125,18 +128,18 @@ class TestRouteEntryFilterSet:
         assert filterset.qs.count() == 2
 
     def test_vrf_filter_null(self):
-        """Test that vrf filter returns all entries when no VRF matches."""
-        # All entries have vrf=None, so filtering by PK of non-existent VRF returns 0
-        import uuid
-
-        filterset = RouteEntryFilterSet({"vrf": [str(uuid.uuid4())]})
+        """Test that vrf filter with isnull=True returns entries without VRF."""
+        # All entries have vrf=None — filtering by vrf__isnull should return all
+        filterset = RouteEntryFilterSet({"vrf": ["null"]})
         assert filterset.is_valid(), filterset.errors
-        assert filterset.qs.count() == 0
+        assert filterset.qs.count() == 3
 
     def test_last_seen_after_filter(self):
         """Test last_seen_after DateTimeFilter."""
-        past = timezone.now().isoformat().replace("+00:00", "Z")
-        filterset = RouteEntryFilterSet({"last_seen_after": past})
+        from datetime import timedelta
+
+        # Use a time clearly in the past — all entries last_seen=now should match
+        one_hour_ago = (timezone.now() - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
+        filterset = RouteEntryFilterSet({"last_seen_after": one_hour_ago})
         assert filterset.is_valid(), filterset.errors
-        # All entries are last_seen=now, which is >= the filter value
-        assert filterset.qs.count() >= 0  # may be 0 if timezone precision causes exclusion
+        assert filterset.qs.count() == 3

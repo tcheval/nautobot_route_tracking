@@ -11,6 +11,7 @@ References:
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.test import RequestFactory
 from nautobot.dcim.models import Device, DeviceType, Interface, Location, LocationType, Manufacturer
 from nautobot.extras.models import Role, Status
@@ -37,10 +38,12 @@ def pytest_configure(config):
 @pytest.fixture
 def location_type(db):
     """Create a LocationType for testing."""
+    device_ct = ContentType.objects.get_for_model(Device)
     lt, _ = LocationType.objects.get_or_create(
         name="Site",
         defaults={"nestable": True},
     )
+    lt.content_types.add(device_ct)
     return lt
 
 
@@ -73,7 +76,10 @@ def device_type(db, manufacturer):
 @pytest.fixture
 def device_role(db):
     """Create a device Role for testing."""
-    return Role.objects.get_or_create(name="Test Role")[0]
+    device_ct = ContentType.objects.get_for_model(Device)
+    role, _ = Role.objects.get_or_create(name="Test Role")
+    role.content_types.add(device_ct)
+    return role
 
 
 @pytest.fixture
@@ -126,7 +132,7 @@ def route_entry(db, device):
 
     from nautobot_route_tracking.models import RouteEntry
 
-    return RouteEntry.objects.create(
+    entry = RouteEntry(
         device=device,
         network="10.0.0.0/24",
         prefix_length=24,
@@ -138,6 +144,8 @@ def route_entry(db, device):
         routing_table="default",
         last_seen=timezone.now(),
     )
+    entry.validated_save()
+    return entry
 
 
 @pytest.fixture
@@ -147,7 +155,7 @@ def route_entry_static(db, device):
 
     from nautobot_route_tracking.models import RouteEntry
 
-    return RouteEntry.objects.create(
+    entry = RouteEntry(
         device=device,
         network="0.0.0.0/0",
         prefix_length=0,
@@ -159,6 +167,8 @@ def route_entry_static(db, device):
         routing_table="default",
         last_seen=timezone.now(),
     )
+    entry.validated_save()
+    return entry
 
 
 # =============================================================================
@@ -233,5 +243,5 @@ def platform_arista_eos(db):
 def device_with_platform(db, device, platform_cisco_ios):
     """Assign a Cisco IOS platform to device for testing."""
     device.platform = platform_cisco_ios
-    device.save()
+    device.validated_save()
     return device

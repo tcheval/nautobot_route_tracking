@@ -175,7 +175,7 @@ class RouteEntry(PrimaryModel):
         help_text="When this route was last seen (updated on each scan)",
     )
 
-    natural_key_field_lookups = ["device__name", "network", "protocol", "next_hop"]
+    natural_key_field_lookups = ["device__name", "vrf__name", "network", "protocol", "next_hop"]
 
     class Meta:
         """Model metadata."""
@@ -211,6 +211,16 @@ class RouteEntry(PrimaryModel):
         nh_str = f" via {self.next_hop}" if self.next_hop else ""
         return f"{self.network}{vrf_str} ({self.protocol}{nh_str}) on {self.device.name}"
 
+    def clean_fields(self, exclude=None) -> None:
+        """Normalize fields before Django's choices validation.
+
+        Protocol must be lowercased before clean_fields() validates it against
+        TextChoices, because NAPALM/EOS returns uppercase protocol names.
+        """
+        if self.protocol:
+            self.protocol = self.protocol.lower()
+        super().clean_fields(exclude=exclude)
+
     def clean(self) -> None:
         """Validate model data.
 
@@ -219,10 +229,6 @@ class RouteEntry(PrimaryModel):
 
         """
         super().clean()
-
-        # Normalize protocol to lowercase
-        if self.protocol:
-            self.protocol = self.protocol.lower()
 
         # Validate and parse network field
         if self.network:
@@ -293,13 +299,17 @@ class RouteEntry(PrimaryModel):
             raise ValueError(f"Invalid CIDR prefix: {network!r}") from exc
 
         with transaction.atomic():
-            existing = cls.objects.select_for_update().filter(
-                device=device,
-                vrf=vrf,
-                network=normalized_network,
-                next_hop=next_hop,
-                protocol=normalized_protocol,
-            ).first()
+            existing = (
+                cls.objects.select_for_update()
+                .filter(
+                    device=device,
+                    vrf=vrf,
+                    network=normalized_network,
+                    next_hop=next_hop,
+                    protocol=normalized_protocol,
+                )
+                .first()
+            )
 
             if existing:
                 # UPDATE: same identity, refresh mutable fields

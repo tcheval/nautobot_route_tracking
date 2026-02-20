@@ -20,7 +20,7 @@ class TestRouteEntryAPI:
     def create_entries(self, device):
         """Create RouteEntry objects for API tests."""
         now = timezone.now()
-        self.entry = RouteEntry.objects.create(
+        self.entry = RouteEntry(
             device=device,
             network="10.0.0.0/24",
             prefix_length=24,
@@ -32,6 +32,7 @@ class TestRouteEntryAPI:
             routing_table="default",
             last_seen=now,
         )
+        self.entry.validated_save()
 
     def test_list_unauthenticated_returns_403(self, client):
         """Test that unauthenticated requests return 403."""
@@ -90,9 +91,17 @@ class TestRouteEntryAPI:
         data = response.json()
 
         expected_fields = [
-            "id", "network", "prefix_length", "protocol", "next_hop",
-            "metric", "admin_distance", "is_active", "routing_table",
-            "first_seen", "last_seen",
+            "id",
+            "network",
+            "prefix_length",
+            "protocol",
+            "next_hop",
+            "metric",
+            "admin_distance",
+            "is_active",
+            "routing_table",
+            "first_seen",
+            "last_seen",
         ]
         for field in expected_fields:
             assert field in data, f"Missing field: {field}"

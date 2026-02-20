@@ -79,7 +79,7 @@ _IOS_PROTOCOL_MAP: dict[str, str] = {
     "L": "local",
     "S": "static",
     "R": "rip",
-    "M": "mobile",
+    "M": "unknown",  # IOS "Mobile" — not a standard Protocol choice
     "B": "bgp",
     "D": "eigrp",
     "EX": "eigrp",

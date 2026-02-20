@@ -11,69 +11,15 @@ References:
 from django import forms
 from nautobot.apps.forms import (
     DateTimePicker,
-    DynamicModelChoiceField,
     DynamicModelMultipleChoiceField,
     NautobotFilterForm,
-    NautobotModelForm,
     TagFilterField,
 )
-from nautobot.dcim.models import Device, Interface, Location
+from nautobot.dcim.models import Device, Location
 from nautobot.extras.models import Role
 from nautobot.ipam.models import VRF
 
 from nautobot_route_tracking.models import RouteEntry
-
-
-class RouteEntryForm(NautobotModelForm):
-    """Form for creating/editing RouteEntry records.
-
-    Provides dynamic choice fields for device and VRF, with the outgoing
-    interface scoped to the selected device.
-
-    See: https://docs.nautobot.com/projects/core/en/stable/development/apps/api/forms/
-
-    """
-
-    device = DynamicModelChoiceField(
-        queryset=Device.objects.all(),
-        label="Device",
-    )
-    vrf = DynamicModelChoiceField(
-        queryset=VRF.objects.all(),
-        label="VRF",
-        required=False,
-    )
-    outgoing_interface = DynamicModelChoiceField(
-        queryset=Interface.objects.all(),
-        label="Outgoing Interface",
-        required=False,
-        query_params={"device": "$device"},
-    )
-    last_seen = forms.DateTimeField(
-        widget=DateTimePicker(),
-        required=False,
-        help_text="Leave empty to use current time",
-    )
-
-    class Meta:
-        """Form metadata."""
-
-        model = RouteEntry
-        fields = [
-            "device",
-            "vrf",
-            "network",
-            "prefix_length",
-            "protocol",
-            "next_hop",
-            "outgoing_interface",
-            "metric",
-            "admin_distance",
-            "is_active",
-            "routing_table",
-            "last_seen",
-            "tags",
-        ]
 
 
 class RouteEntryFilterForm(NautobotFilterForm):
@@ -125,7 +71,7 @@ class RouteEntryFilterForm(NautobotFilterForm):
         required=False,
         label="Next Hop (partial match)",
     )
-    is_active = forms.BooleanField(
+    is_active = forms.NullBooleanField(
         required=False,
         widget=forms.Select(choices=[("", "---------"), ("true", "Yes"), ("false", "No")]),
         label="Is Active",
