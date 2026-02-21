@@ -86,38 +86,44 @@ def device_role(db):
 def device(db, location, device_type, device_role):
     """Create a Device for testing."""
     status = Status.objects.get_for_model(Device).first()
-    return Device.objects.create(
+    dev = Device(
         name="test-device-01",
         location=location,
         device_type=device_type,
         role=device_role,
         status=status,
     )
+    dev.validated_save()
+    return dev
 
 
 @pytest.fixture
 def device2(db, location, device_type, device_role):
     """Create a second Device for testing."""
     status = Status.objects.get_for_model(Device).first()
-    return Device.objects.create(
+    dev = Device(
         name="test-device-02",
         location=location,
         device_type=device_type,
         role=device_role,
         status=status,
     )
+    dev.validated_save()
+    return dev
 
 
 @pytest.fixture
 def interface(db, device):
     """Create an Interface for testing."""
     status = Status.objects.get_for_model(Interface).first()
-    return Interface.objects.create(
+    iface = Interface(
         name="GigabitEthernet0/1",
         device=device,
         type="1000base-t",
         status=status,
     )
+    iface.validated_save()
+    return iface
 
 
 # =============================================================================

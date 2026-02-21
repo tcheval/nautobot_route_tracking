@@ -12,6 +12,8 @@ from django.utils import timezone
 
 from nautobot_route_tracking.jobs._base import _extract_nornir_error
 from nautobot_route_tracking.jobs.collect_routes import (
+    _collect_routes_eos,
+    _collect_routes_ios,
     _collect_routes_task,
     _parse_eos_routes,
     _parse_ios_routes,
@@ -327,6 +329,104 @@ class TestExtractNornirError:
 
         error = _extract_nornir_error(mock_exc)
         assert "Device unreachable" in error
+
+
+class TestCollectRoutesEos:
+    """Tests for _collect_routes_eos Nornir task error branches."""
+
+    def test_non_dict_result_returns_failed(self):
+        """Test that non-dict napalm_cli result returns a failed Result."""
+        mock_task = MagicMock()
+        mock_sub_result = MagicMock()
+        mock_sub_result[0].result = "unexpected string"
+        mock_task.run.return_value = mock_sub_result
+
+        result = _collect_routes_eos(mock_task)
+
+        assert result.failed is True
+        assert "unexpected type" in result.result
+
+    def test_empty_command_output_returns_empty_dict(self):
+        """Test that empty command output returns empty routes dict."""
+        mock_task = MagicMock()
+        mock_sub_result = MagicMock()
+        mock_sub_result[0].result = {"show ip route vrf all | json": ""}
+        mock_task.run.return_value = mock_sub_result
+
+        result = _collect_routes_eos(mock_task)
+
+        assert result.failed is not True
+        assert result.result == {}
+
+    def test_nornir_subtask_error_returns_failed(self):
+        """Test that NornirSubTaskError is caught and returns a failed Result."""
+        from nornir.core.exceptions import NornirSubTaskError
+
+        mock_task = MagicMock()
+        mock_task.run.side_effect = NornirSubTaskError(task=mock_task, result=MagicMock())
+
+        result = _collect_routes_eos(mock_task)
+
+        assert result.failed is True
+
+    def test_generic_exception_returns_failed(self):
+        """Test that generic exceptions are caught and return a failed Result."""
+        mock_task = MagicMock()
+        mock_task.run.side_effect = ConnectionError("SSH timeout")
+
+        result = _collect_routes_eos(mock_task)
+
+        assert result.failed is True
+        assert "SSH timeout" in result.result
+
+
+class TestCollectRoutesIos:
+    """Tests for _collect_routes_ios Nornir task error branches."""
+
+    def test_non_dict_result_returns_failed(self):
+        """Test that non-dict napalm_cli result returns a failed Result."""
+        mock_task = MagicMock()
+        mock_sub_result = MagicMock()
+        mock_sub_result[0].result = "unexpected string"
+        mock_task.run.return_value = mock_sub_result
+
+        result = _collect_routes_ios(mock_task)
+
+        assert result.failed is True
+        assert "unexpected type" in result.result
+
+    def test_empty_command_output_returns_empty_dict(self):
+        """Test that empty command output returns empty routes dict."""
+        mock_task = MagicMock()
+        mock_sub_result = MagicMock()
+        mock_sub_result[0].result = {"show ip route": "", "show ip route vrf *": ""}
+        mock_task.run.return_value = mock_sub_result
+
+        result = _collect_routes_ios(mock_task)
+
+        assert result.failed is not True
+        assert result.result == {}
+
+    def test_nornir_subtask_error_returns_failed(self):
+        """Test that NornirSubTaskError is caught and returns a failed Result."""
+        from nornir.core.exceptions import NornirSubTaskError
+
+        mock_task = MagicMock()
+        mock_task.run.side_effect = NornirSubTaskError(task=mock_task, result=MagicMock())
+
+        result = _collect_routes_ios(mock_task)
+
+        assert result.failed is True
+
+    def test_generic_exception_returns_failed(self):
+        """Test that generic exceptions are caught and return a failed Result."""
+        mock_task = MagicMock()
+        mock_task.run.side_effect = ConnectionError("SSH timeout")
+
+        result = _collect_routes_ios(mock_task)
+
+        assert result.failed is True
+        assert "SSH timeout" in result.result
 
 
 @pytest.mark.django_db

@@ -3,8 +3,8 @@
 This module implements CollectRoutesJob which uses Nornir for parallel
 collection of full routing tables using platform-specific NAPALM CLI commands:
 
-- Arista EOS: ``show ip route | json``  (JSON, parsed directly)
-- Cisco IOS:  ``show ip route``         (text, parsed via TextFSM/ntc-templates)
+- Arista EOS: ``show ip route vrf all | json``  (JSON, parsed directly)
+- Cisco IOS:  ``show ip route`` + ``show ip route vrf *``  (text, parsed via TextFSM/ntc-templates)
 
 The job implements the NetDB UPDATE vs INSERT logic:
 - UPDATE last_seen if (device, vrf, network, next_hop, protocol) unchanged
@@ -252,9 +252,9 @@ def _collect_routes_task(task: Task) -> Result:
 
 
 def _collect_routes_eos(task: Task) -> Result:
-    """Collect routes from Arista EOS using ``show ip route | json``."""
+    """Collect routes from Arista EOS using ``show ip route vrf all | json``."""
     try:
-        cmd = "show ip route | json"
+        cmd = "show ip route vrf all | json"
         sub_result = task.run(
             task=napalm_cli,
             commands=[cmd],
@@ -284,12 +284,13 @@ def _collect_routes_eos(task: Task) -> Result:
 
 
 def _collect_routes_ios(task: Task) -> Result:
-    """Collect routes from Cisco IOS using ``show ip route`` + TextFSM."""
+    """Collect routes from Cisco IOS using ``show ip route`` + ``show ip route vrf *`` + TextFSM."""
     try:
-        cmd = "show ip route"
+        cmd_global = "show ip route"
+        cmd_vrf = "show ip route vrf *"
         sub_result = task.run(
             task=napalm_cli,
-            commands=[cmd],
+            commands=[cmd_global, cmd_vrf],
             severity_level=logging.DEBUG,
         )
         raw: Any = sub_result[0].result
@@ -300,11 +301,20 @@ def _collect_routes_ios(task: Task) -> Result:
                 result=f"napalm_cli returned unexpected type {type(raw).__name__}: {raw!r}",
             )
 
-        text: str = raw.get(cmd, "")
-        if not text:
-            return Result(host=task.host, result={})
+        routes: dict[str, list[dict[str, Any]]] = {}
 
-        routes = _parse_ios_routes(text)
+        # Parse global routing table
+        global_text: str = raw.get(cmd_global, "")
+        if global_text:
+            routes = _parse_ios_routes(global_text)
+
+        # Parse VRF routing tables (best-effort — empty if no VRFs configured)
+        vrf_text: str = raw.get(cmd_vrf, "")
+        if vrf_text:
+            vrf_routes = _parse_ios_routes(vrf_text)
+            for prefix, nexthops in vrf_routes.items():
+                routes.setdefault(prefix, []).extend(nexthops)
+
         return Result(host=task.host, result=routes)
 
     except NornirSubTaskError as exc:
@@ -328,8 +338,8 @@ class CollectRoutesJob(BaseCollectionJob):
     the NetDB UPDATE vs INSERT logic.
 
     Collection strategy per platform:
-    - **Arista EOS**: ``show ip route | json`` — structured JSON, all protocols
-    - **Cisco IOS**: ``show ip route`` — parsed via TextFSM (ntc-templates)
+    - **Arista EOS**: ``show ip route vrf all | json`` — structured JSON, all VRFs
+    - **Cisco IOS**: ``show ip route`` + ``show ip route vrf *`` — parsed via TextFSM (ntc-templates), all VRFs
 
     Features:
     - Parallel collection via Nornir (single nr.run(), no serial loops)

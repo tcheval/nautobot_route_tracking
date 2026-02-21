@@ -9,12 +9,12 @@ References:
 
 """
 
-from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.views import View
 from django_tables2 import RequestConfig
 from nautobot.apps.views import NautobotUIViewSet
+from nautobot.core.views.mixins import ObjectPermissionRequiredMixin
 from nautobot.core.views.paginator import EnhancedPaginator, get_paginate_count
 from nautobot.dcim.models import Device
 
@@ -53,7 +53,7 @@ class RouteEntryUIViewSet(NautobotUIViewSet):
     lookup_field = "pk"
 
 
-class DeviceRouteTabView(LoginRequiredMixin, PermissionRequiredMixin, View):
+class DeviceRouteTabView(ObjectPermissionRequiredMixin, View):
     """Tab view showing Route Entries for a specific Device.
 
     Used as a tab on the Device detail page via TemplateExtension.
@@ -62,16 +62,24 @@ class DeviceRouteTabView(LoginRequiredMixin, PermissionRequiredMixin, View):
     """
 
     permission_required = "nautobot_route_tracking.view_routeentry"
+    queryset = RouteEntry.objects.all()
 
     template_name = "nautobot_route_tracking/device_route_tab.html"
 
+    def get_required_permission(self):
+        """Return the required permission for this view."""
+        return self.permission_required
+
     def get(self, request: HttpRequest, pk: str) -> HttpResponse:
         """Handle GET request for device route tab."""
-        device = get_object_or_404(Device, pk=pk)
+        device = get_object_or_404(Device.objects.restrict(request.user, "view"), pk=pk)
 
-        # Get route entries for this device
+        # Get route entries for this device, filtered by object-level permissions
         route_entries = (
-            RouteEntry.objects.filter(device=device).select_related("vrf", "outgoing_interface").order_by("-last_seen")
+            RouteEntry.objects.restrict(request.user, "view")
+            .filter(device=device)
+            .select_related("vrf", "outgoing_interface")
+            .order_by("-last_seen")
         )
 
         # Create table

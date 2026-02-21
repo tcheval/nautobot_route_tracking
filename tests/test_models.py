@@ -5,6 +5,8 @@ Tests verify model creation, validation, the NetDB UPDATE/INSERT logic,
 ECMP handling, and route exclusion.
 """
 
+from datetime import timedelta
+
 import pytest
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -172,6 +174,53 @@ class TestRouteEntry:
 
         assert entry.vrf is None
         assert entry.pk is not None
+
+
+@pytest.mark.django_db
+class TestRouteEntryQuerySet:
+    """Tests for RouteEntryQuerySet custom methods."""
+
+    def test_stale_returns_old_entries(self, device):
+        """Test that stale() returns entries older than the given days."""
+        old_entry = RouteEntry(
+            device=device,
+            network="10.90.0.0/24",
+            prefix_length=24,
+            protocol=RouteEntry.Protocol.OSPF,
+            next_hop="192.168.1.1",
+            last_seen=timezone.now(),
+        )
+        old_entry.validated_save()
+        # Force last_seen to 100 days ago
+        RouteEntry.objects.filter(pk=old_entry.pk).update(last_seen=timezone.now() - timedelta(days=100))
+
+        fresh_entry = RouteEntry(
+            device=device,
+            network="10.91.0.0/24",
+            prefix_length=24,
+            protocol=RouteEntry.Protocol.OSPF,
+            next_hop="192.168.1.2",
+            last_seen=timezone.now(),
+        )
+        fresh_entry.validated_save()
+
+        stale_qs = RouteEntry.objects.stale(days=90)
+        assert stale_qs.count() == 1
+        assert stale_qs.first().pk == old_entry.pk
+
+    def test_stale_returns_empty_when_all_fresh(self, device):
+        """Test that stale() returns empty queryset when all entries are recent."""
+        entry = RouteEntry(
+            device=device,
+            network="10.92.0.0/24",
+            prefix_length=24,
+            protocol=RouteEntry.Protocol.STATIC,
+            next_hop="10.0.0.1",
+            last_seen=timezone.now(),
+        )
+        entry.validated_save()
+
+        assert RouteEntry.objects.stale(days=90).count() == 0
 
 
 @pytest.mark.django_db
