@@ -208,8 +208,8 @@ class RouteEntry(PrimaryModel):
     def __str__(self) -> str:
         """Return string representation."""
         vrf_str = f" [{self.vrf.name}]" if self.vrf else ""
-        nh_str = f" via {self.next_hop}" if self.next_hop else ""
-        return f"{self.network}{vrf_str} ({self.protocol}{nh_str}) on {self.device.name}"
+        via_str = f" via {self.next_hop}" if self.next_hop else ""
+        return f"{self.device.name}: {self.network}{via_str} ({self.protocol}){vrf_str}"
 
     def clean_fields(self, exclude=None) -> None:
         """Normalize fields before Django's choices validation.

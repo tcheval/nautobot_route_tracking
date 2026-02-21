@@ -39,10 +39,15 @@ class DeviceRouteTab(TemplateExtension):
         ]
 
     def right_page(self):
-        """Add route statistics panel to device detail right sidebar."""
-        device = self.context["object"]
+        """Add route statistics panel to device detail right sidebar.
 
-        route_count = RouteEntry.objects.filter(device=device).count()
+        Uses exists() + count() with short-circuit: only runs COUNT(*)
+        if at least one route exists, avoiding unnecessary queries for
+        devices with no routes.
+        """
+        device = self.context["object"]
+        qs = RouteEntry.objects.filter(device=device)
+        route_count = qs.count() if qs.exists() else 0
 
         return self.render(
             "nautobot_route_tracking/inc/device_route_panel.html",

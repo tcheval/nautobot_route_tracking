@@ -118,19 +118,16 @@ class RouteEntryFilterSet(NautobotFilterSet):
         """Filter metadata."""
 
         model = RouteEntry
+        # Only list model fields here; explicitly declared filters above
+        # (device_role, location, first_seen_*, last_seen_*) are discovered
+        # automatically by django-filter from class attributes.
         fields = [
             "id",
             "device",
-            "device_role",
-            "location",
             "vrf",
             "protocol",
             "network",
             "next_hop",
             "is_active",
             "routing_table",
-            "first_seen_after",
-            "first_seen_before",
-            "last_seen_after",
-            "last_seen_before",
         ]

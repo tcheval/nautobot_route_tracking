@@ -20,6 +20,7 @@ References:
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import pathlib
@@ -44,9 +45,12 @@ from nautobot_route_tracking.models import RouteEntry, is_excluded_route
 # Constants
 # ---------------------------------------------------------------------------
 
-# Path to the ntc-templates TextFSM template for Cisco IOS routing table
+# Path to the ntc-templates TextFSM template for Cisco IOS routing table.
+# Template content is read once at import time to avoid repeated disk I/O
+# on every _parse_ios_routes() call.
 _NTC_TEMPLATES_DIR = pathlib.Path(_ntc_pkg.__file__).parent / "templates"
 _IOS_ROUTE_TEMPLATE = _NTC_TEMPLATES_DIR / "cisco_ios_show_ip_route.textfsm"
+_IOS_ROUTE_TEMPLATE_TEXT: str = _IOS_ROUTE_TEMPLATE.read_text()
 
 # Valid protocol values for RouteEntry.Protocol
 _VALID_PROTOCOLS: set[str] = {c[0] for c in RouteEntry.Protocol.choices}
@@ -174,9 +178,8 @@ def _parse_ios_routes(text: str) -> dict[str, list[dict[str, Any]]]:
         preference, metric, current_active, routing_table.
 
     """
-    with open(_IOS_ROUTE_TEMPLATE) as tmpl_file:
-        fsm = textfsm.TextFSM(tmpl_file)
-        parsed = fsm.ParseTextToDicts(text)
+    fsm = textfsm.TextFSM(io.StringIO(_IOS_ROUTE_TEMPLATE_TEXT))
+    parsed = fsm.ParseTextToDicts(text)
 
     routes: dict[str, list[dict[str, Any]]] = {}
     for row in parsed:
@@ -575,13 +578,16 @@ class CollectRoutesJob(BaseCollectionJob):
                     i.name: i for i in Interface.objects.filter(device=device_obj)
                 }
 
-                # Process routes within a single atomic block per device
                 device_updated = 0
                 device_created = 0
                 device_excluded = 0
                 device_dryrun = 0
                 device_invalid = 0
 
+                # Outer transaction per device: if a truly unexpected error occurs,
+                # the entire device batch rolls back cleanly. Inner transaction in
+                # update_or_create_entry() becomes a savepoint (lightweight on PG)
+                # and is kept for standalone callers that don't wrap in a transaction.
                 with transaction.atomic():
                     for prefix, nexthops in routes.items():
                         # Exclude unwanted prefixes (multicast, link-local, loopback)

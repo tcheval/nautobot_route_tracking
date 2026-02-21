@@ -27,6 +27,7 @@ from nautobot.dcim.models import Device, Location
 from nautobot.extras.models import DynamicGroup, Role, Status, Tag
 from nornir import InitNornir
 from nornir.core.exceptions import NornirSubTaskError
+from nornir.core.inventory import ConnectionOptions
 from nornir.core.plugins.inventory import InventoryPluginRegister
 
 from nautobot_route_tracking.models import SUPPORTED_PLATFORMS
@@ -399,8 +400,6 @@ class BaseCollectionJob(Job):
             napalm_opts = host.connection_options.get("napalm")
 
             if napalm_opts is None and napalm_driver:
-                from nornir.core.inventory import ConnectionOptions
-
                 napalm_opts = ConnectionOptions(platform=napalm_driver)
                 host.connection_options["napalm"] = napalm_opts
 

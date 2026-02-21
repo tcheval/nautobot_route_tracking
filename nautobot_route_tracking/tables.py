@@ -109,6 +109,10 @@ class RouteEntryDeviceTable(BaseTable):
     admin_distance = tables.Column(verbose_name="AD")
     is_active = tables.BooleanColumn(verbose_name="Active")
     routing_table = tables.Column(verbose_name="VRF/Table")
+    first_seen = tables.DateTimeColumn(
+        verbose_name="First Seen",
+        format="Y-m-d H:i",
+    )
     last_seen = tables.DateTimeColumn(
         verbose_name="Last Seen",
         format="Y-m-d H:i",
@@ -128,6 +132,7 @@ class RouteEntryDeviceTable(BaseTable):
             "admin_distance",
             "is_active",
             "routing_table",
+            "first_seen",
             "last_seen",
         )
         default_columns = (
