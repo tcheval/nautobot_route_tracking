@@ -80,9 +80,14 @@ class RouteEntryFilterSet(NautobotFilterSet):
     )
 
     protocol = django_filters.MultipleChoiceFilter(
-        choices=RouteEntry.Protocol.choices,
+        choices=RouteEntry.Protocol.choices + [(c[0].upper(), c[1]) for c in RouteEntry.Protocol.choices],
         label="Protocol",
+        method="filter_protocol",
     )
+
+    def filter_protocol(self, queryset, name, value):
+        """Filter protocol case-insensitively (accept both 'bgp' and 'BGP')."""
+        return queryset.filter(protocol__in=[v.lower() for v in value])
 
     network = django_filters.CharFilter(
         lookup_expr="icontains",
