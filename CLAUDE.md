@@ -1,3 +1,8 @@
+## Code Review
+
+Pour la review d'applications Nautobot 3.x, suivre les instructions dans `AGENTS.md`.
+
+
 ## Essential Reading
 
 **Before writing any code**, read **[docs/nautobot_plugin_dev_lessons.md](docs/nautobot_plugin_dev_lessons.md)** — a guide of hard-won lessons covering Nornir parallelism, NautobotORMInventory quirks, Nautobot 3.x pitfalls, and testing patterns.
