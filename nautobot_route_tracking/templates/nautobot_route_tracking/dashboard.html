@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% load helpers %}
+{% load humanize %}
+{% load render_table from django_tables2 %}
+
+{% block title %}Route Tracking Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- Stat Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="mb-0">{{ total_routes|intcomma }}</h2>
+                <p class="text-muted mb-0">Total Routes</p>
+                <small class="text-success">{{ active_routes|intcomma }} active</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="mb-0">{{ devices_collected|intcomma }}</h2>
+                <p class="text-muted mb-0">Devices Collected</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="mb-0">
+                    {% if last_collection %}
+                        {{ last_collection|naturaltime }}
+                    {% else %}
+                        <span class="text-muted">Never</span>
+                    {% endif %}
+                </h2>
+                <p class="text-muted mb-0">Last Collection</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="mb-0 {% if stale_routes > 0 %}text-warning{% endif %}">{{ stale_routes|intcomma }}</h2>
+                <p class="text-muted mb-0">Stale Routes (&gt;90 days)</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong><i class="mdi mdi-chart-donut"></i> Routes by Protocol</strong>
+            </div>
+            <div class="card-body">
+                <canvas id="protocolChart" height="260"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong><i class="mdi mdi-chart-bar"></i> Top 10 Devices</strong>
+            </div>
+            <div class="card-body">
+                <canvas id="devicesChart" height="260"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 + Recent Table -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong><i class="mdi mdi-map-marker-multiple"></i> Routes by Location</strong>
+            </div>
+            <div class="card-body">
+                <canvas id="locationChart" height="260"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <strong><i class="mdi mdi-clock-outline"></i> Recently Discovered Routes (24h)</strong>
+            </div>
+            <div class="card-body">
+                {% if recent_table.data %}
+                    <div class="table-responsive">
+                        {% render_table recent_table "inc/table.html" %}
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0">No new routes discovered in the last 24 hours.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block javascript %}
+{{ block.super }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function() {
+    const COLORS = [
+        '#0d6efd', '#198754', '#ffc107', '#dc3545', '#6f42c1',
+        '#0dcaf0', '#fd7e14', '#20c997', '#6610f2', '#d63384'
+    ];
+
+    // --- Protocol Doughnut Chart ---
+    const protocolData = {{ protocol_data_json|safe }};
+    if (protocolData.length > 0) {
+        new Chart(document.getElementById('protocolChart'), {
+            type: 'doughnut',
+            data: {
+                labels: protocolData.map(d => d.protocol.toUpperCase()),
+                datasets: [{
+                    data: protocolData.map(d => d.count),
+                    backgroundColor: COLORS.slice(0, protocolData.length),
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right' }
+                }
+            }
+        });
+    }
+
+    // --- Top Devices Bar Chart ---
+    const devicesData = {{ top_devices_json|safe }};
+    if (devicesData.length > 0) {
+        new Chart(document.getElementById('devicesChart'), {
+            type: 'bar',
+            data: {
+                labels: devicesData.map(d => d.device__name),
+                datasets: [{
+                    label: 'Routes',
+                    data: devicesData.map(d => d.count),
+                    backgroundColor: '#0d6efd',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true } }
+            }
+        });
+    }
+
+    // --- Location Bar Chart ---
+    const locationData = {{ location_data_json|safe }};
+    if (locationData.length > 0) {
+        new Chart(document.getElementById('locationChart'), {
+            type: 'bar',
+            data: {
+                labels: locationData.map(d => d.device__location__name),
+                datasets: [{
+                    label: 'Routes',
+                    data: locationData.map(d => d.count),
+                    backgroundColor: '#198754',
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true } }
+            }
+        });
+    }
+})();
+</script>
+{% endblock %}

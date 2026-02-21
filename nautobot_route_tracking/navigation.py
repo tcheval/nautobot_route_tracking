@@ -20,6 +20,19 @@ menu_items = (
         weight=500,
         groups=(
             NavMenuGroup(
+                name="Overview",
+                weight=50,
+                items=(
+                    NavMenuItem(
+                        link="plugins:nautobot_route_tracking:dashboard",
+                        name="Dashboard",
+                        permissions=["nautobot_route_tracking.view_routeentry"],
+                        buttons=(),
+                        weight=100,
+                    ),
+                ),
+            ),
+            NavMenuGroup(
                 name="Routes",
                 weight=100,
                 items=(

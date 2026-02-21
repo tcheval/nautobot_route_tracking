@@ -13,6 +13,7 @@ from nautobot.apps.urls import NautobotUIViewSetRouter
 
 from nautobot_route_tracking.views import (
     DeviceRouteTabView,
+    RouteDashboardView,
     RouteEntryUIViewSet,
 )
 
@@ -22,6 +23,8 @@ router = NautobotUIViewSetRouter()
 router.register("route-entries", RouteEntryUIViewSet)
 
 urlpatterns = [
+    # Dashboard overview
+    path("dashboard/", RouteDashboardView.as_view(), name="dashboard"),
     # Device tab view (used by TemplateExtension)
     path("devices/<uuid:pk>/routes/", DeviceRouteTabView.as_view(), name="device_route_tab"),
 ]
