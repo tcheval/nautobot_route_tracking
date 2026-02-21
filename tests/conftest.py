@@ -121,6 +121,22 @@ def interface(db, device):
 
 
 # =============================================================================
+# IPAM Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def vrf(db):
+    """Create a VRF for testing."""
+    from nautobot.ipam.models import VRF, Namespace
+
+    namespace = Namespace.objects.first() or Namespace.objects.create(name="Global")
+    vrf_obj = VRF(name="TestVRF", namespace=namespace)
+    vrf_obj.validated_save()
+    return vrf_obj
+
+
+# =============================================================================
 # Route Tracking Fixtures
 # =============================================================================
 

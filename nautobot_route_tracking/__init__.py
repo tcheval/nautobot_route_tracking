@@ -84,6 +84,3 @@ class NautobotRouteTrackingConfig(NautobotAppConfig):
         except (OperationalError, ProgrammingError):
             # Tables may not exist yet during initial migration
             pass
-
-
-config = NautobotRouteTrackingConfig  # pylint: disable=invalid-name

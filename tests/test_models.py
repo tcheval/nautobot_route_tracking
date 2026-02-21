@@ -271,6 +271,42 @@ class TestRouteEntryNetDBLogic:
         assert entry2.metric == 20
         assert entry2.is_active is False
 
+    def test_update_or_create_with_vrf(self, device, vrf):
+        """Test update_or_create_entry with a non-None VRF."""
+        entry, created = RouteEntry.update_or_create_entry(
+            device=device,
+            network="10.7.0.0/24",
+            protocol="ospf",
+            vrf=vrf,
+            next_hop="192.168.1.1",
+        )
+        assert created is True
+        assert entry.vrf == vrf
+        assert entry.vrf.name == "TestVRF"
+
+        # Second call with same identity — should UPDATE, not INSERT
+        entry2, created2 = RouteEntry.update_or_create_entry(
+            device=device,
+            network="10.7.0.0/24",
+            protocol="ospf",
+            vrf=vrf,
+            next_hop="192.168.1.1",
+            metric=50,
+        )
+        assert created2 is False
+        assert entry2.pk == entry.pk
+        assert entry2.metric == 50
+
+    def test_update_or_create_invalid_cidr_raises(self, device):
+        """Test that update_or_create_entry raises ValueError for invalid CIDR."""
+        with pytest.raises(ValueError, match="Invalid CIDR prefix"):
+            RouteEntry.update_or_create_entry(
+                device=device,
+                network="not-a-prefix",
+                protocol="ospf",
+                next_hop="192.168.1.1",
+            )
+
     def test_uniqueconstraint_enforced(self, device):
         """Test that the UniqueConstraint prevents duplicate rows."""
         from django.db import IntegrityError

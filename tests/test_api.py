@@ -105,3 +105,26 @@ class TestRouteEntryAPI:
         ]
         for field in expected_fields:
             assert field in data, f"Missing field: {field}"
+
+    def test_post_returns_405(self, api_client):
+        """Test that POST is not allowed (read-only API)."""
+        response = api_client.post(self.LIST_URL, {"network": "10.0.0.0/24"}, format="json")
+        assert response.status_code == 405
+
+    def test_put_returns_405(self, api_client):
+        """Test that PUT is not allowed (read-only API)."""
+        url = self.DETAIL_URL.format(pk=self.entry.pk)
+        response = api_client.put(url, {"network": "10.0.0.0/24"}, format="json")
+        assert response.status_code == 405
+
+    def test_patch_returns_405(self, api_client):
+        """Test that PATCH is not allowed (read-only API)."""
+        url = self.DETAIL_URL.format(pk=self.entry.pk)
+        response = api_client.patch(url, {"metric": 99}, format="json")
+        assert response.status_code == 405
+
+    def test_delete_returns_405(self, api_client):
+        """Test that DELETE is not allowed (read-only API)."""
+        url = self.DETAIL_URL.format(pk=self.entry.pk)
+        response = api_client.delete(url)
+        assert response.status_code == 405

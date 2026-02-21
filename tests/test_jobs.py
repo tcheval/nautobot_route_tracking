@@ -11,7 +11,11 @@ import pytest
 from django.utils import timezone
 
 from nautobot_route_tracking.jobs._base import _extract_nornir_error
-from nautobot_route_tracking.jobs.collect_routes import _parse_eos_routes, _parse_ios_routes
+from nautobot_route_tracking.jobs.collect_routes import (
+    _collect_routes_task,
+    _parse_eos_routes,
+    _parse_ios_routes,
+)
 from nautobot_route_tracking.models import RouteEntry
 
 # =============================================================================
@@ -244,6 +248,31 @@ S*    0.0.0.0/0 [1/0] via 10.0.0.1
         """Test that empty output returns empty dict."""
         routes = _parse_ios_routes("")
         assert routes == {}
+
+
+class TestCollectRoutesTask:
+    """Tests for the _collect_routes_task Nornir task dispatcher."""
+
+    def test_unsupported_platform_returns_failed(self):
+        """Test that an unsupported platform returns a failed Result."""
+        mock_task = MagicMock()
+        mock_task.host.platform = "paloalto_panos"
+
+        result = _collect_routes_task(mock_task)
+
+        assert result.failed is True
+        assert "Unsupported platform" in result.result
+        assert "paloalto_panos" in result.result
+
+    def test_empty_platform_returns_failed(self):
+        """Test that an empty platform string returns a failed Result."""
+        mock_task = MagicMock()
+        mock_task.host.platform = ""
+
+        result = _collect_routes_task(mock_task)
+
+        assert result.failed is True
+        assert "Unsupported platform" in result.result
 
 
 class TestExtractNornirError:
