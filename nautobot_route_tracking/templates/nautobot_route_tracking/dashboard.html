@@ -8,27 +8,27 @@
 {% block content %}
 
 <!-- Stat Cards -->
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
+<div class="row mb-4 align-items-stretch">
+    <div class="col-md-3 d-flex">
+        <div class="card text-center w-100">
+            <div class="card-body d-flex flex-column justify-content-center">
                 <h2 class="mb-0">{{ total_routes|intcomma }}</h2>
                 <p class="text-muted mb-0">Total Routes</p>
                 <small class="text-success">{{ active_routes|intcomma }} active</small>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
+    <div class="col-md-3 d-flex">
+        <div class="card text-center w-100">
+            <div class="card-body d-flex flex-column justify-content-center">
                 <h2 class="mb-0">{{ devices_collected|intcomma }}</h2>
                 <p class="text-muted mb-0">Devices Collected</p>
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
+    <div class="col-md-3 d-flex">
+        <div class="card text-center w-100">
+            <div class="card-body d-flex flex-column justify-content-center">
                 <h2 class="mb-0">
                     {% if last_collection %}
                         {{ last_collection|naturaltime }}
@@ -40,9 +40,9 @@
             </div>
         </div>
     </div>
-    <div class="col-md-3">
-        <div class="card text-center">
-            <div class="card-body">
+    <div class="col-md-3 d-flex">
+        <div class="card text-center w-100">
+            <div class="card-body d-flex flex-column justify-content-center">
                 <h2 class="mb-0 {% if stale_routes > 0 %}text-warning{% endif %}">{{ stale_routes|intcomma }}</h2>
                 <p class="text-muted mb-0">Stale Routes (&gt;90 days)</p>
             </div>
