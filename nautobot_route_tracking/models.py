@@ -15,12 +15,15 @@ References:
 """
 
 import ipaddress
+from datetime import timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 from nautobot.apps.models import PrimaryModel
+from nautobot.core.models.querysets import RestrictedQuerySet
 from nautobot.dcim.models import Device, Interface
+from nautobot.ipam.models import VRF
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -37,9 +40,6 @@ EXCLUDED_ROUTE_NETWORKS: tuple[str, ...] = (
 
 # Pre-computed network objects for efficient filtering
 _EXCLUDED_NETWORKS = [ipaddress.ip_network(n, strict=False) for n in EXCLUDED_ROUTE_NETWORKS]
-
-SUPPORTED_PLATFORMS: tuple[str, ...] = ("cisco_ios", "arista_eos")
-
 
 # ---------------------------------------------------------------------------
 # Utilities
@@ -65,6 +65,24 @@ def is_excluded_route(network: str) -> bool:
         net.version == excluded.version and (net.subnet_of(excluded) or net == excluded)
         for excluded in _EXCLUDED_NETWORKS
     )
+
+
+# ---------------------------------------------------------------------------
+# Custom QuerySet
+# ---------------------------------------------------------------------------
+
+
+class RouteEntryQuerySet(RestrictedQuerySet):
+    """Custom QuerySet for RouteEntry with convenience filters.
+
+    Inherits from RestrictedQuerySet to preserve Nautobot's object-level
+    permission filtering (.restrict()).
+    """
+
+    def stale(self, days: int = 90) -> "RouteEntryQuerySet":
+        """Return entries whose last_seen is older than ``days`` days ago."""
+        cutoff = timezone.now() - timedelta(days=days)
+        return self.filter(last_seen__lt=cutoff)
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +128,8 @@ class RouteEntry(PrimaryModel):
         LOCAL = "local", "Local"
         UNKNOWN = "unknown", "Unknown"
 
+    objects = RouteEntryQuerySet.as_manager()
+
     device = models.ForeignKey(
         to=Device,
         on_delete=models.CASCADE,
@@ -117,7 +137,7 @@ class RouteEntry(PrimaryModel):
         help_text="Device from which the route was collected",
     )
     vrf = models.ForeignKey(
-        to="ipam.VRF",
+        to=VRF,
         on_delete=models.SET_NULL,
         related_name="route_entries",
         null=True,
@@ -201,6 +221,7 @@ class RouteEntry(PrimaryModel):
             models.Index(fields=["device", "last_seen"], name="idx_route_device_lastseen"),
             models.Index(fields=["network", "last_seen"], name="idx_route_network_lastseen"),
             models.Index(fields=["protocol", "last_seen"], name="idx_route_protocol_lastseen"),
+            models.Index(fields=["vrf", "last_seen"], name="idx_route_vrf_lastseen"),
             models.Index(fields=["last_seen"], name="idx_route_lastseen"),
             models.Index(fields=["first_seen"], name="idx_route_firstseen"),
         ]

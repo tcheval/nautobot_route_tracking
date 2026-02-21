@@ -84,3 +84,7 @@ class NautobotRouteTrackingConfig(NautobotAppConfig):
         except (OperationalError, ProgrammingError):
             # Tables may not exist yet during initial migration
             pass
+
+
+# Required by Nautobot 3.0.x plugin loader (looks up module.config)
+config = NautobotRouteTrackingConfig

@@ -94,8 +94,7 @@ class PurgeOldRoutesJob(Job):
 
         if commit:
             with transaction.atomic():
-                qs = RouteEntry.objects.filter(last_seen__lt=cutoff)
-                deleted, _ = qs.delete()
+                deleted, _ = RouteEntry.objects.stale(days=retention_days).delete()
             self.logger.info(
                 "Deleted %d route entry(ies)",
                 deleted,
@@ -103,7 +102,7 @@ class PurgeOldRoutesJob(Job):
             )
             result_count = deleted
         else:
-            result_count = RouteEntry.objects.filter(last_seen__lt=cutoff).count()
+            result_count = RouteEntry.objects.stale(days=retention_days).count()
             self.logger.info(
                 "DRY-RUN: would delete %d route entry(ies) — no changes written",
                 result_count,

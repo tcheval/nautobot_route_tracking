@@ -30,7 +30,7 @@ from nornir.core.exceptions import NornirSubTaskError
 from nornir.core.inventory import ConnectionOptions
 from nornir.core.plugins.inventory import InventoryPluginRegister
 
-from nautobot_route_tracking.models import SUPPORTED_PLATFORMS
+from nautobot_route_tracking.constants import SUPPORTED_PLATFORMS
 
 if TYPE_CHECKING:
     from django.db.models import QuerySet
