@@ -1,7 +1,7 @@
 """Navigation configuration for Route Tracking plugin.
 
-This module defines the navigation menu structure for the plugin,
-adding a "Route Tracking" top-level tab with a "Routes" group.
+Contributes a "Route Tracking" group to the shared "Dashboards" tab (weight=400),
+and keeps a separate "Route Tracking" tab (weight=500) for the Routes group.
 
 References:
 - Nautobot Navigation: https://docs.nautobot.com/projects/core/en/stable/development/apps/api/navigation/
@@ -16,12 +16,13 @@ from nautobot.apps.ui import (
 
 menu_items = (
     NavMenuTab(
-        name="Route Tracking",
-        weight=500,
+        name="Dashboards",
+        weight=150,
+        icon="control-panel",
         groups=(
             NavMenuGroup(
-                name="Overview",
-                weight=50,
+                name="Route Tracking",
+                weight=300,
                 items=(
                     NavMenuItem(
                         link="plugins:nautobot_route_tracking:dashboard",
@@ -32,6 +33,12 @@ menu_items = (
                     ),
                 ),
             ),
+        ),
+    ),
+    NavMenuTab(
+        name="Route Tracking",
+        weight=500,
+        groups=(
             NavMenuGroup(
                 name="Routes",
                 weight=100,

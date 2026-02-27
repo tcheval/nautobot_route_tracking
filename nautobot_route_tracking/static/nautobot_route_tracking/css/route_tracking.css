@@ -1,0 +1,127 @@
+/* ============================================================================
+   Route Tracking — Stylesheet
+   CSS Custom Properties for theming + component styles
+   Prefix: nbc- (Nautobot Custom) — shared design system
+   ============================================================================ */
+
+/* ── Design Tokens ── */
+:root {
+    --nbc-info:        #0d6efd;
+    --nbc-success:     #198754;
+    --nbc-warning:     #ffc107;
+    --nbc-orange:      #e07807;
+    --nbc-danger:      #dc3545;
+    --nbc-disabled:    #6c757d;
+
+    --nbc-card-bg:     #ffffff;
+    --nbc-card-border: rgba(0, 0, 0, 0.08);
+    --nbc-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    --nbc-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.10);
+
+    --nbc-text-primary:   #212529;
+    --nbc-text-secondary: #6c757d;
+    --nbc-text-muted:     #adb5bd;
+
+    --nbc-kpi-value:   1.5rem;
+    --nbc-kpi-label:   0.75rem;
+    --nbc-kpi-subtext: 0.7rem;
+
+    --nbc-space-xs:  4px;
+    --nbc-space-sm:  8px;
+    --nbc-space-md:  16px;
+
+    --nbc-radius-sm:  3px;
+    --nbc-radius-md:  6px;
+
+    --nbc-transition-fast: 0.15s ease;
+}
+
+/* ── Dark Mode Overrides ── */
+[data-bs-theme="dark"] {
+    --nbc-card-bg:     #1a1d21;
+    --nbc-card-border: rgba(255, 255, 255, 0.08);
+    --nbc-card-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    --nbc-card-shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.3);
+    --nbc-text-primary:   #e9ecef;
+    --nbc-text-secondary: #adb5bd;
+    --nbc-text-muted:     #6c757d;
+}
+
+/* ── Responsive Overrides ── */
+@media (min-width: 1400px) {
+    :root {
+        --nbc-kpi-value:   1.75rem;
+        --nbc-kpi-label:   0.8rem;
+        --nbc-kpi-subtext: 0.75rem;
+    }
+}
+
+/* ============================================================================
+   KPI Cards
+   ============================================================================ */
+.nbc-kpi-card {
+    border: none;
+    border-left: 3px solid transparent;
+    box-shadow: var(--nbc-card-shadow);
+    transition: box-shadow 0.2s, transform 0.2s;
+}
+.nbc-kpi-card:hover {
+    box-shadow: var(--nbc-card-shadow-hover);
+    transform: translateY(-1px);
+}
+[data-bs-theme="dark"] .nbc-kpi-card {
+    box-shadow: var(--nbc-card-shadow);
+}
+.nbc-kpi-card .card-body {
+    padding: 0.875rem 0.75rem;
+}
+.nbc-kpi-border-neutral  { border-left-color: var(--nbc-info); }
+.nbc-kpi-border-green    { border-left-color: var(--nbc-success); }
+.nbc-kpi-border-yellow   { border-left-color: var(--nbc-warning); }
+.nbc-kpi-border-orange   { border-left-color: var(--nbc-orange); }
+.nbc-kpi-border-red      { border-left-color: var(--nbc-danger); }
+.nbc-kpi-border-gray     { border-left-color: var(--nbc-disabled); }
+
+.nbc-kpi-value {
+    font-size: var(--nbc-kpi-value);
+    font-weight: 700;
+    line-height: 1.2;
+}
+.nbc-kpi-label {
+    font-size: var(--nbc-kpi-label);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.nbc-kpi-subtext {
+    font-size: var(--nbc-kpi-subtext);
+    margin-top: 2px;
+}
+
+/* ============================================================================
+   Chart containers (need explicit height for Chart.js)
+   ============================================================================ */
+.chart-container {
+    position: relative;
+    height: 350px;
+}
+.chart-container-sm {
+    position: relative;
+    height: 260px;
+}
+@media (min-width: 1400px) {
+    .chart-container { height: 400px; }
+    .chart-container-sm { height: 300px; }
+}
+
+/* ============================================================================
+   Print
+   ============================================================================ */
+@media print {
+    .btn, .navbar, .sidebar, #sidenav, #footer, #header { display: none !important; }
+    .card { page-break-inside: avoid; }
+    .chart-container, .chart-container-sm { display: none !important; }
+}

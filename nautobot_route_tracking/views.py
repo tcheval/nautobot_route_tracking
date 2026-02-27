@@ -9,7 +9,6 @@ References:
 
 """
 
-import json
 from datetime import timedelta
 
 from django.db.models import Count
@@ -159,9 +158,9 @@ class RouteDashboardView(ObjectPermissionRequiredMixin, View):
             "devices_collected": devices_collected,
             "stale_routes": stale_routes,
             "last_collection": last_seen_entry,
-            "protocol_data_json": json.dumps(protocol_data),
-            "top_devices_json": json.dumps(top_devices),
-            "location_data_json": json.dumps(location_data),
+            "protocol_data": protocol_data,
+            "top_devices": top_devices,
+            "location_data": location_data,
             "recent_table": recent_table,
         }
         return render(request, "nautobot_route_tracking/dashboard.html", context)

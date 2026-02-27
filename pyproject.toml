@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "nautobot-route-tracking"
-version = "1.1.0"
+version = "1.1.1"
 description = "Nautobot plugin for tracking routing table entries from network devices"
 authors = ["Thomas <thomas@networktocode.com>"]
 license = "Apache-2.0"

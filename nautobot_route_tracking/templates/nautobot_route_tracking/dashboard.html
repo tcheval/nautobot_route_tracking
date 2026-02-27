@@ -1,95 +1,111 @@
 {% extends "base.html" %}
-{% load helpers %}
-{% load humanize %}
+{% load helpers humanize static %}
 {% load render_table from django_tables2 %}
 
 {% block title %}Route Tracking Dashboard{% endblock %}
+{% block breadcrumbs %}{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="{% static 'nautobot_route_tracking/css/route_tracking.css' %}">
+{% endblock %}
 
 {% block content %}
+<div class="d-flex justify-content-between align-items-center mb-16">
+    <div>
+        <h1 class="fs-2 mb-0"><span class="mdi mdi-routes" aria-hidden="true"></span> Route Tracking Dashboard</h1>
+    </div>
+</div>
 
-<!-- Stat Cards -->
-<div class="row mb-4 align-items-stretch">
-    <div class="col-md-3 d-flex">
-        <div class="card text-center w-100">
-            <div class="card-body d-flex flex-column justify-content-center">
-                <h2 class="mb-0">{{ total_routes|intcomma }}</h2>
-                <p class="text-muted mb-0">Total Routes</p>
-                <small class="text-success">{{ active_routes|intcomma }} active</small>
+{# ── KPI Cards ── #}
+<div class="row row-cols-2 row-cols-md-4 g-3 mb-16">
+    <div class="col">
+        <div class="card nbc-kpi-card nbc-kpi-border-neutral h-100">
+            <div class="card-body text-center">
+                <div class="nbc-kpi-value text-primary">{{ total_routes|intcomma }}</div>
+                <div class="nbc-kpi-label text-secondary"><span class="mdi mdi-routes" aria-hidden="true"></span> Total Routes</div>
+                <div class="nbc-kpi-subtext text-success">{{ active_routes|intcomma }} active</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3 d-flex">
-        <div class="card text-center w-100">
-            <div class="card-body d-flex flex-column justify-content-center">
-                <h2 class="mb-0">{{ devices_collected|intcomma }}</h2>
-                <p class="text-muted mb-0">Devices Collected</p>
+    <div class="col">
+        <div class="card nbc-kpi-card nbc-kpi-border-neutral h-100">
+            <div class="card-body text-center">
+                <div class="nbc-kpi-value text-primary">{{ devices_collected|intcomma }}</div>
+                <div class="nbc-kpi-label text-secondary"><span class="mdi mdi-devices" aria-hidden="true"></span> Devices</div>
+                <div class="nbc-kpi-subtext text-muted">collected</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3 d-flex">
-        <div class="card text-center w-100">
-            <div class="card-body d-flex flex-column justify-content-center">
-                <h2 class="mb-0">
+    <div class="col">
+        <div class="card nbc-kpi-card nbc-kpi-border-neutral h-100">
+            <div class="card-body text-center">
+                <div class="nbc-kpi-value text-primary">
                     {% if last_collection %}
                         {{ last_collection|naturaltime }}
                     {% else %}
                         <span class="text-muted">Never</span>
                     {% endif %}
-                </h2>
-                <p class="text-muted mb-0">Last Collection</p>
+                </div>
+                <div class="nbc-kpi-label text-secondary"><span class="mdi mdi-clock-outline" aria-hidden="true"></span> Last Collection</div>
             </div>
         </div>
     </div>
-    <div class="col-md-3 d-flex">
-        <div class="card text-center w-100">
-            <div class="card-body d-flex flex-column justify-content-center">
-                <h2 class="mb-0 {% if stale_routes > 0 %}text-warning{% endif %}">{{ stale_routes|intcomma }}</h2>
-                <p class="text-muted mb-0">Stale Routes (&gt;90 days)</p>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Charts Row 1 -->
-<div class="row mb-4">
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <strong><i class="mdi mdi-chart-donut"></i> Routes by Protocol</strong>
-            </div>
-            <div class="card-body">
-                <canvas id="protocolChart" height="260"></canvas>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-6">
-        <div class="card">
-            <div class="card-header">
-                <strong><i class="mdi mdi-chart-bar"></i> Top 10 Devices</strong>
-            </div>
-            <div class="card-body">
-                <canvas id="devicesChart" height="260"></canvas>
+    <div class="col">
+        <div class="card nbc-kpi-card {% if stale_routes > 0 %}nbc-kpi-border-orange{% else %}nbc-kpi-border-green{% endif %} h-100">
+            <div class="card-body text-center">
+                <div class="nbc-kpi-value {% if stale_routes > 0 %}text-warning{% else %}text-success{% endif %}">{{ stale_routes|intcomma }}</div>
+                <div class="nbc-kpi-label text-secondary"><span class="mdi mdi-alert-circle" aria-hidden="true"></span> Stale (&gt;90d)</div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Charts Row 2 + Recent Table -->
-<div class="row mb-4">
+{# ── Charts Row 1 ── #}
+<div class="row g-3 mb-16">
     <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-header">
-                <strong><i class="mdi mdi-map-marker-multiple"></i> Routes by Location</strong>
+                <strong><span class="mdi mdi-chart-donut" aria-hidden="true"></span> Routes by Protocol</strong>
             </div>
             <div class="card-body">
-                <canvas id="locationChart" height="260"></canvas>
+                <div class="chart-container-sm">
+                    <canvas id="protocolChart" aria-label="Routes by protocol doughnut chart"></canvas>
+                </div>
             </div>
         </div>
     </div>
     <div class="col-md-6">
-        <div class="card">
+        <div class="card h-100">
             <div class="card-header">
-                <strong><i class="mdi mdi-clock-outline"></i> Recently Discovered Routes (24h)</strong>
+                <strong><span class="mdi mdi-chart-bar" aria-hidden="true"></span> Top 10 Devices</strong>
+            </div>
+            <div class="card-body">
+                <div class="chart-container-sm">
+                    <canvas id="devicesChart" aria-label="Top 10 devices by route count bar chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Charts Row 2 + Recent Table ── #}
+<div class="row g-3 mb-16">
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><span class="mdi mdi-map-marker-multiple" aria-hidden="true"></span> Routes by Location</strong>
+            </div>
+            <div class="card-body">
+                <div class="chart-container-sm">
+                    <canvas id="locationChart" aria-label="Routes by location bar chart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <strong><span class="mdi mdi-clock-outline" aria-hidden="true"></span> Recently Discovered Routes (24h)</strong>
             </div>
             <div class="card-body">
                 {% if recent_table.data %}
@@ -108,81 +124,159 @@
 
 {% block javascript %}
 {{ block.super }}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"
+        integrity="sha384-vsrfeLOOY6KuIYKDlmVH5UiBmgIdB1oEf7p01YgWHuqmOHfZr374+odEv96n9tNC"
+        crossorigin="anonymous"></script>
+{{ protocol_data|json_script:"protocol-data" }}
+{{ top_devices|json_script:"top-devices-data" }}
+{{ location_data|json_script:"location-data" }}
 <script>
+"use strict";
 (function() {
-    const COLORS = [
-        '#0d6efd', '#198754', '#ffc107', '#dc3545', '#6f42c1',
-        '#0dcaf0', '#fd7e14', '#20c997', '#6610f2', '#d63384'
+    var COLORS = [
+        "#0d6efd", "#198754", "#ffc107", "#dc3545", "#6f42c1",
+        "#0dcaf0", "#fd7e14", "#20c997", "#6610f2", "#d63384"
     ];
 
-    // --- Protocol Doughnut Chart ---
-    const protocolData = {{ protocol_data_json|safe }};
-    if (protocolData.length > 0) {
-        new Chart(document.getElementById('protocolChart'), {
-            type: 'doughnut',
-            data: {
-                labels: protocolData.map(d => d.protocol.toUpperCase()),
-                datasets: [{
-                    data: protocolData.map(d => d.count),
-                    backgroundColor: COLORS.slice(0, protocolData.length),
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'right' }
+    function isDarkMode() {
+        return document.documentElement.getAttribute("data-bs-theme") === "dark";
+    }
+
+    function chartTheme() {
+        var dark = isDarkMode();
+        return {
+            gridColor: dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+            textColor: dark ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.55)",
+            borderColor: dark ? "#1a1a1a" : "#ffffff",
+        };
+    }
+
+    function parseData(id) {
+        var el = document.getElementById(id);
+        if (!el) return null;
+        return JSON.parse(el.textContent);
+    }
+
+    document.addEventListener("DOMContentLoaded", function() {
+        var theme = chartTheme();
+
+        // --- Protocol Doughnut Chart ---
+        var protocolData = parseData("protocol-data");
+        if (protocolData && protocolData.length > 0) {
+            var total = protocolData.reduce(function(a, d) { return a + d.count; }, 0);
+            new Chart(document.getElementById("protocolChart"), {
+                type: "doughnut",
+                data: {
+                    labels: protocolData.map(function(d) { return d.protocol.toUpperCase(); }),
+                    datasets: [{
+                        data: protocolData.map(function(d) { return d.count; }),
+                        backgroundColor: COLORS.slice(0, protocolData.length),
+                        borderWidth: 2,
+                        borderColor: theme.borderColor,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "60%",
+                    plugins: {
+                        legend: {
+                            position: "right",
+                            labels: {
+                                color: theme.textColor,
+                                usePointStyle: true,
+                                pointStyleWidth: 10,
+                                padding: 10,
+                                generateLabels: function(chart) {
+                                    var ds = chart.data.datasets[0];
+                                    return chart.data.labels.map(function(label, i) {
+                                        var val = ds.data[i];
+                                        var pct = total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
+                                        return {
+                                            text: label + " — " + val + " (" + pct + "%)",
+                                            fillStyle: ds.backgroundColor[i],
+                                            strokeStyle: ds.borderColor,
+                                            lineWidth: ds.borderWidth,
+                                            pointStyle: "circle",
+                                            hidden: !chart.getDataVisibility(i),
+                                            index: i,
+                                        };
+                                    });
+                                },
+                            },
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(tooltipItem) {
+                                    var val = tooltipItem.parsed;
+                                    var pct = total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
+                                    return tooltipItem.label + ": " + val + " (" + pct + "%)";
+                                },
+                            },
+                        },
+                    }
                 }
-            }
-        });
-    }
+            });
+        }
 
-    // --- Top Devices Bar Chart ---
-    const devicesData = {{ top_devices_json|safe }};
-    if (devicesData.length > 0) {
-        new Chart(document.getElementById('devicesChart'), {
-            type: 'bar',
-            data: {
-                labels: devicesData.map(d => d.device__name),
-                datasets: [{
-                    label: 'Routes',
-                    data: devicesData.map(d => d.count),
-                    backgroundColor: '#0d6efd',
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                indexAxis: 'y',
-                plugins: { legend: { display: false } },
-                scales: { x: { beginAtZero: true } }
-            }
-        });
-    }
+        // --- Top Devices Bar Chart ---
+        var devicesData = parseData("top-devices-data");
+        if (devicesData && devicesData.length > 0) {
+            new Chart(document.getElementById("devicesChart"), {
+                type: "bar",
+                data: {
+                    labels: devicesData.map(function(d) { return d.device__name; }),
+                    datasets: [{
+                        label: "Routes",
+                        data: devicesData.map(function(d) { return d.count; }),
+                        backgroundColor: "#0d6efd",
+                        borderRadius: 3,
+                        borderSkipped: false,
+                        maxBarThickness: 32,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: "y",
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { color: theme.gridColor }, ticks: { color: theme.textColor }, border: { display: false } },
+                        y: { grid: { color: "transparent" }, ticks: { color: theme.textColor }, border: { display: false } },
+                    }
+                }
+            });
+        }
 
-    // --- Location Bar Chart ---
-    const locationData = {{ location_data_json|safe }};
-    if (locationData.length > 0) {
-        new Chart(document.getElementById('locationChart'), {
-            type: 'bar',
-            data: {
-                labels: locationData.map(d => d.device__location__name),
-                datasets: [{
-                    label: 'Routes',
-                    data: locationData.map(d => d.count),
-                    backgroundColor: '#198754',
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                indexAxis: 'y',
-                plugins: { legend: { display: false } },
-                scales: { x: { beginAtZero: true } }
-            }
-        });
-    }
+        // --- Location Bar Chart ---
+        var locationData = parseData("location-data");
+        if (locationData && locationData.length > 0) {
+            new Chart(document.getElementById("locationChart"), {
+                type: "bar",
+                data: {
+                    labels: locationData.map(function(d) { return d.device__location__name; }),
+                    datasets: [{
+                        label: "Routes",
+                        data: locationData.map(function(d) { return d.count; }),
+                        backgroundColor: "#198754",
+                        borderRadius: 3,
+                        borderSkipped: false,
+                        maxBarThickness: 32,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: "y",
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { beginAtZero: true, grid: { color: theme.gridColor }, ticks: { color: theme.textColor }, border: { display: false } },
+                        y: { grid: { color: "transparent" }, ticks: { color: theme.textColor }, border: { display: false } },
+                    }
+                }
+            });
+        }
+    });
 })();
 </script>
 {% endblock %}
