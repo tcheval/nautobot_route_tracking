@@ -16,6 +16,17 @@
     </div>
 </div>
 
+{# ── Route Lookup Search Bar ── #}
+<div class="nbc-lookup-bar mb-16">
+    <form method="get" action="{% url 'plugins:nautobot_route_tracking:routeentry_list' %}" class="nbc-lookup-form">
+        <span class="nbc-lookup-icon mdi mdi-magnify" aria-hidden="true"></span>
+        <input type="text" name="q" class="nbc-lookup-input"
+               placeholder="Search by IP address or prefix (e.g. 10.0.0.1, 192.168.0.0/16)..."
+               autocomplete="off">
+        <kbd class="nbc-lookup-kbd" aria-hidden="true">/</kbd>
+    </form>
+</div>
+
 {# ── KPI Cards ── #}
 <div class="row row-cols-2 row-cols-md-4 g-3 mb-16">
     <div class="col">
@@ -276,6 +287,26 @@
                 }
             });
         }
+    });
+})();
+
+/* Keyboard shortcut: press "/" to focus the lookup bar */
+(function() {
+    var input = document.querySelector(".nbc-lookup-input");
+    if (!input) return;
+    document.addEventListener("keydown", function(e) {
+        if (e.key === "/" && !["INPUT","TEXTAREA","SELECT"].includes(document.activeElement.tagName) && !document.activeElement.isContentEditable) {
+            e.preventDefault();
+            input.focus();
+        }
+    });
+    input.addEventListener("focus", function() {
+        var kbd = document.querySelector(".nbc-lookup-kbd");
+        if (kbd) kbd.style.opacity = "0";
+    });
+    input.addEventListener("blur", function() {
+        var kbd = document.querySelector(".nbc-lookup-kbd");
+        if (kbd && !this.value) kbd.style.opacity = "1";
     });
 })();
 </script>
