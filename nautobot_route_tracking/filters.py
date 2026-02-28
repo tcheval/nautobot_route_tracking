@@ -10,7 +10,11 @@ References:
 
 """
 
+import ipaddress
+
 import django_filters
+from django.db.models import Q
+from django.db.models.expressions import RawSQL
 from nautobot.apps.filters import (
     NaturalKeyOrPKMultipleChoiceFilter,
     NautobotFilterSet,
@@ -52,6 +56,47 @@ class RouteEntryFilterSet(NautobotFilterSet):
             "routing_table": "icontains",
         },
     )
+
+    lookup = django_filters.CharFilter(
+        method="filter_lookup",
+        label="IP/Prefix Lookup",
+    )
+
+    def filter_lookup(self, queryset, name, value):
+        """Smart route lookup: find routes containing an IP or matching a prefix.
+
+        - Bare IP (e.g. "10.2.20.23"): finds all prefixes containing that IP
+          using PostgreSQL ``network::cidr >>= inet 'x.x.x.x'``
+        - CIDR prefix (e.g. "10.2.20.0/24"): exact match on network field
+        - Anything else: falls through to text search on network + next_hop + device name
+        """
+        value = value.strip()
+        if not value:
+            return queryset
+
+        # Try as bare IP address → containment search
+        try:
+            addr = ipaddress.ip_address(value)
+            return queryset.extra(
+                where=["network::cidr >>= %s::inet"],
+                params=[str(addr)],
+            )
+        except ValueError:
+            pass
+
+        # Try as CIDR prefix → exact match (normalized)
+        try:
+            net = ipaddress.ip_network(value, strict=False)
+            return queryset.filter(network=str(net))
+        except ValueError:
+            pass
+
+        # Fallback: text search
+        return queryset.filter(
+            Q(network__icontains=value)
+            | Q(next_hop__icontains=value)
+            | Q(device__name__icontains=value)
+        )
 
     device = NaturalKeyOrPKMultipleChoiceFilter(
         queryset=Device.objects.all(),
