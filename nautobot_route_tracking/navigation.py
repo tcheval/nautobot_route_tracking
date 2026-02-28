@@ -1,7 +1,7 @@
 """Navigation configuration for Route Tracking plugin.
 
-Contributes a "Route Tracking" group to the shared "Dashboards" tab (weight=400),
-and keeps a separate "Route Tracking" tab (weight=500) for the Routes group.
+Contributes a "Route Tracking" group to the shared "Dashboards" tab (weight=50),
+and adds Route Entries to the built-in "Apps" tab (weight=2200).
 
 References:
 - Nautobot Navigation: https://docs.nautobot.com/projects/core/en/stable/development/apps/api/navigation/
@@ -17,7 +17,7 @@ from nautobot.apps.ui import (
 menu_items = (
     NavMenuTab(
         name="Dashboards",
-        weight=150,
+        weight=50,
         icon="control-panel",
         groups=(
             NavMenuGroup(
@@ -36,12 +36,13 @@ menu_items = (
         ),
     ),
     NavMenuTab(
-        name="Route Tracking",
-        weight=500,
+        name="Apps",
+        weight=2200,
+        icon="elements",
         groups=(
             NavMenuGroup(
-                name="Routes",
-                weight=100,
+                name="Route Tracking",
+                weight=300,
                 items=(
                     NavMenuItem(
                         link="plugins:nautobot_route_tracking:routeentry_list",
