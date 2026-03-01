@@ -7,6 +7,7 @@
 /* ── Design Tokens ── */
 :root {
     --nbc-info:        #0d6efd;
+    --nbc-info-rgb:    13, 110, 253;
     --nbc-success:     #198754;
     --nbc-warning:     #ffc107;
     --nbc-orange:      #e07807;
@@ -33,7 +34,10 @@
     --nbc-radius-sm:  3px;
     --nbc-radius-md:  6px;
 
-    --nbc-transition-fast: 0.15s ease;
+    --nbc-transition-fast:   0.15s ease;
+    --nbc-transition-normal: 0.3s ease;
+
+    --nbc-font-monospace: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
 }
 
 /* ── Dark Mode Overrides ── */
@@ -124,22 +128,22 @@
 /* ── Subtle idle pulse on the border ── */
 @keyframes nbc-lookup-idle-pulse {
     0%, 100% {
-        border-color: rgba(13, 110, 253, 0.18);
+        border-color: rgba(var(--nbc-info-rgb), 0.18);
         box-shadow: var(--nbc-card-shadow-hover),
-                    0 0 0 1px rgba(13, 110, 253, 0.06);
+                    0 0 0 1px rgba(var(--nbc-info-rgb), 0.06);
     }
     50% {
-        border-color: rgba(13, 110, 253, 0.35);
+        border-color: rgba(var(--nbc-info-rgb), 0.35);
         box-shadow: var(--nbc-card-shadow-hover),
-                    0 0 0 1px rgba(13, 110, 253, 0.12),
-                    0 0 20px rgba(13, 110, 253, 0.06);
+                    0 0 0 1px rgba(var(--nbc-info-rgb), 0.12),
+                    0 0 20px rgba(var(--nbc-info-rgb), 0.06);
     }
 }
 
-/* ── Scanning line across the bar (idle attention-grabber) ── */
+/* ── Scanning line across the bar — uses transform for GPU acceleration ── */
 @keyframes nbc-lookup-scan {
     0% {
-        left: -20%;
+        transform: translateX(-100%);
         opacity: 0;
     }
     10% {
@@ -149,7 +153,7 @@
         opacity: 1;
     }
     100% {
-        left: 120%;
+        transform: translateX(500%);
         opacity: 0;
     }
 }
@@ -157,27 +161,28 @@
 /* ── Focus ring expansion ── */
 @keyframes nbc-lookup-focus-ring {
     0% {
-        box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.3),
+        box-shadow: 0 0 0 0 rgba(var(--nbc-info-rgb), 0.3),
                     var(--nbc-card-shadow-hover);
     }
     100% {
-        box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.15),
-                    0 8px 32px rgba(13, 110, 253, 0.10),
+        box-shadow: 0 0 0 4px rgba(var(--nbc-info-rgb), 0.15),
+                    0 8px 32px rgba(var(--nbc-info-rgb), 0.10),
                     0 2px 8px rgba(0, 0, 0, 0.06);
     }
 }
 
 .nbc-lookup-bar {
     position: relative;
-    background: rgba(13, 110, 253, 0.02);
-    border: 2px solid rgba(13, 110, 253, 0.18);
+    background: rgba(var(--nbc-info-rgb), 0.02);
+    border: 2px solid rgba(var(--nbc-info-rgb), 0.18);
     border-radius: 12px;
     box-shadow: var(--nbc-card-shadow-hover),
-                0 0 0 1px rgba(13, 110, 253, 0.06),
-                inset 0 1px 2px rgba(13, 110, 253, 0.06);
-    transition: border-color 0.3s ease,
-                box-shadow 0.3s ease,
-                transform 0.2s ease;
+                0 0 0 1px rgba(var(--nbc-info-rgb), 0.06),
+                inset 0 1px 2px rgba(var(--nbc-info-rgb), 0.06);
+    transition: border-color var(--nbc-transition-normal),
+                box-shadow var(--nbc-transition-normal),
+                transform var(--nbc-transition-fast);
+    /* Entrance runs 0–0.5s, idle pulse starts at 2s to avoid overlap */
     animation: nbc-lookup-entrance 0.5s cubic-bezier(0.22, 1, 0.36, 1) both,
                nbc-lookup-idle-pulse 4s ease-in-out 2s infinite;
     overflow: hidden;
@@ -188,20 +193,21 @@
     content: "";
     position: absolute;
     top: 0;
-    left: -20%;
+    left: 0;
     width: 20%;
     height: 100%;
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(13, 110, 253, 0.05),
-        rgba(13, 110, 253, 0.08),
-        rgba(13, 110, 253, 0.05),
+        rgba(var(--nbc-info-rgb), 0.05),
+        rgba(var(--nbc-info-rgb), 0.08),
+        rgba(var(--nbc-info-rgb), 0.05),
         transparent
     );
     animation: nbc-lookup-scan 6s ease-in-out 3s infinite;
     pointer-events: none;
     z-index: 1;
+    will-change: transform, opacity;
 }
 
 /* Subtle top accent line */
@@ -215,13 +221,13 @@
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(13, 110, 253, 0.3),
-        rgba(13, 110, 253, 0.5),
-        rgba(13, 110, 253, 0.3),
+        rgba(var(--nbc-info-rgb), 0.3),
+        rgba(var(--nbc-info-rgb), 0.5),
+        rgba(var(--nbc-info-rgb), 0.3),
         transparent
     );
     border-radius: 0 0 2px 2px;
-    transition: opacity 0.3s ease;
+    transition: opacity var(--nbc-transition-normal);
     z-index: 1;
 }
 
@@ -230,8 +236,8 @@
     border-color: var(--nbc-info);
     transform: scale(1.01);
     animation: nbc-lookup-focus-ring 0.3s ease forwards;
-    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.15),
-                0 8px 32px rgba(13, 110, 253, 0.10),
+    box-shadow: 0 0 0 4px rgba(var(--nbc-info-rgb), 0.15),
+                0 8px 32px rgba(var(--nbc-info-rgb), 0.10),
                 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 .nbc-lookup-bar:focus-within::before {
@@ -244,19 +250,19 @@
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(13, 110, 253, 0.5),
-        rgba(13, 110, 253, 0.7),
-        rgba(13, 110, 253, 0.5),
+        rgba(var(--nbc-info-rgb), 0.5),
+        rgba(var(--nbc-info-rgb), 0.7),
+        rgba(var(--nbc-info-rgb), 0.5),
         transparent
     );
 }
 
 /* ── Hover (when not focused) ── */
 .nbc-lookup-bar:hover:not(:focus-within) {
-    border-color: rgba(13, 110, 253, 0.35);
+    border-color: rgba(var(--nbc-info-rgb), 0.35);
     box-shadow: var(--nbc-card-shadow-hover),
-                0 0 0 1px rgba(13, 110, 253, 0.12),
-                0 0 24px rgba(13, 110, 253, 0.06);
+                0 0 0 1px rgba(var(--nbc-info-rgb), 0.12),
+                0 0 24px rgba(var(--nbc-info-rgb), 0.06);
     transform: translateY(-1px);
 }
 
@@ -271,7 +277,7 @@
 
 .nbc-lookup-icon {
     font-size: 1.6rem;
-    color: rgba(13, 110, 253, 0.5);
+    color: rgba(var(--nbc-info-rgb), 0.5);
     flex-shrink: 0;
     transition: color 0.25s ease, transform 0.25s ease;
 }
@@ -280,7 +286,7 @@
     transform: scale(1.1);
 }
 .nbc-lookup-bar:hover:not(:focus-within) .nbc-lookup-icon {
-    color: rgba(13, 110, 253, 0.7);
+    color: rgba(var(--nbc-info-rgb), 0.7);
 }
 
 .nbc-lookup-input {
@@ -288,7 +294,7 @@
     border: none;
     outline: none;
     background: transparent;
-    font-family: "JetBrains Mono", "Fira Code", "SF Mono", ui-monospace, monospace;
+    font-family: var(--nbc-font-monospace);
     font-size: 1rem;
     font-weight: 450;
     letter-spacing: 0.01em;
@@ -312,36 +318,36 @@
     min-width: 28px;
     height: 28px;
     padding: 0 8px;
-    border: 1px solid rgba(13, 110, 253, 0.2);
+    border: 1px solid rgba(var(--nbc-info-rgb), 0.2);
     border-radius: 6px;
-    background: rgba(13, 110, 253, 0.04);
+    background: rgba(var(--nbc-info-rgb), 0.04);
     color: var(--nbc-text-secondary);
     font-size: 0.8rem;
     font-weight: 600;
     font-family: inherit;
     line-height: 1;
-    transition: opacity 0.2s ease, background 0.2s ease;
+    transition: opacity var(--nbc-transition-fast), background var(--nbc-transition-fast);
 }
 .nbc-lookup-bar:hover:not(:focus-within) .nbc-lookup-kbd {
-    background: rgba(13, 110, 253, 0.08);
-    border-color: rgba(13, 110, 253, 0.3);
+    background: rgba(var(--nbc-info-rgb), 0.08);
+    border-color: rgba(var(--nbc-info-rgb), 0.3);
 }
 
 /* ── Dark mode refinements ── */
 [data-bs-theme="dark"] .nbc-lookup-bar {
-    background: rgba(13, 110, 253, 0.04);
-    border-color: rgba(13, 110, 253, 0.12);
+    background: rgba(var(--nbc-info-rgb), 0.04);
+    border-color: rgba(var(--nbc-info-rgb), 0.12);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3),
-                0 0 0 1px rgba(13, 110, 253, 0.08),
-                inset 0 1px 2px rgba(13, 110, 253, 0.08);
+                0 0 0 1px rgba(var(--nbc-info-rgb), 0.08),
+                inset 0 1px 2px rgba(var(--nbc-info-rgb), 0.08);
 }
 [data-bs-theme="dark"] .nbc-lookup-bar::before {
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(13, 110, 253, 0.04),
-        rgba(13, 110, 253, 0.07),
-        rgba(13, 110, 253, 0.04),
+        rgba(var(--nbc-info-rgb), 0.04),
+        rgba(var(--nbc-info-rgb), 0.07),
+        rgba(var(--nbc-info-rgb), 0.04),
         transparent
     );
 }
@@ -349,37 +355,41 @@
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(13, 110, 253, 0.2),
-        rgba(13, 110, 253, 0.35),
-        rgba(13, 110, 253, 0.2),
+        rgba(var(--nbc-info-rgb), 0.2),
+        rgba(var(--nbc-info-rgb), 0.35),
+        rgba(var(--nbc-info-rgb), 0.2),
         transparent
     );
 }
 [data-bs-theme="dark"] .nbc-lookup-bar:focus-within {
     border-color: var(--nbc-info);
-    box-shadow: 0 0 0 4px rgba(13, 110, 253, 0.12),
-                0 8px 32px rgba(13, 110, 253, 0.08),
+    box-shadow: 0 0 0 4px rgba(var(--nbc-info-rgb), 0.12),
+                0 8px 32px rgba(var(--nbc-info-rgb), 0.08),
                 0 2px 8px rgba(0, 0, 0, 0.4);
 }
 [data-bs-theme="dark"] .nbc-lookup-bar:focus-within::after {
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(13, 110, 253, 0.35),
-        rgba(13, 110, 253, 0.5),
-        rgba(13, 110, 253, 0.35),
+        rgba(var(--nbc-info-rgb), 0.35),
+        rgba(var(--nbc-info-rgb), 0.5),
+        rgba(var(--nbc-info-rgb), 0.35),
         transparent
     );
 }
 [data-bs-theme="dark"] .nbc-lookup-bar:hover:not(:focus-within) {
-    border-color: rgba(13, 110, 253, 0.25);
+    border-color: rgba(var(--nbc-info-rgb), 0.25);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35),
-                0 0 0 1px rgba(13, 110, 253, 0.12),
-                0 0 24px rgba(13, 110, 253, 0.04);
+                0 0 0 1px rgba(var(--nbc-info-rgb), 0.12),
+                0 0 24px rgba(var(--nbc-info-rgb), 0.04);
 }
 [data-bs-theme="dark"] .nbc-lookup-kbd {
-    border-color: rgba(13, 110, 253, 0.15);
-    background: rgba(13, 110, 253, 0.06);
+    border-color: rgba(var(--nbc-info-rgb), 0.15);
+    background: rgba(var(--nbc-info-rgb), 0.06);
+}
+[data-bs-theme="dark"] .nbc-lookup-bar:hover:not(:focus-within) .nbc-lookup-kbd {
+    background: rgba(var(--nbc-info-rgb), 0.12);
+    border-color: rgba(var(--nbc-info-rgb), 0.25);
 }
 
 /* ── Reduced motion: disable animations for accessibility ── */
@@ -394,10 +404,6 @@
     .nbc-lookup-bar:focus-within {
         animation: none;
     }
-}
-
-@media print {
-    .nbc-lookup-bar { display: none !important; }
 }
 
 /* ============================================================================
@@ -420,7 +426,7 @@
    Print
    ============================================================================ */
 @media print {
-    .btn, .navbar, .sidebar, #sidenav, #footer, #header { display: none !important; }
+    .btn, .navbar, .sidebar, #sidenav, #footer, #header, .nbc-lookup-bar { display: none !important; }
     .card { page-break-inside: avoid; }
     .chart-container, .chart-container-sm { display: none !important; }
 }
