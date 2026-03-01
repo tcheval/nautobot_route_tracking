@@ -10,19 +10,14 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-16">
-    <div>
-        <h1 class="fs-2 mb-0"><span class="mdi mdi-routes" aria-hidden="true"></span> Route Tracking Dashboard</h1>
-    </div>
-</div>
-
 {# ── Route Lookup Search Bar ── #}
 <div class="nbc-lookup-bar mb-16">
     <form method="get" action="{% url 'plugins:nautobot_route_tracking:routeentry_list' %}" class="nbc-lookup-form">
         <span class="nbc-lookup-icon mdi mdi-magnify" aria-hidden="true"></span>
         <input type="text" name="lookup" class="nbc-lookup-input"
-               placeholder="Search by IP address or prefix (e.g. 10.0.0.1, 192.168.0.0/16)..."
-               autocomplete="off">
+               placeholder="Search IP or prefix (e.g. 10.0.0.1, 192.168.0.0/16)..."
+               autocomplete="off"
+               spellcheck="false">
         <kbd class="nbc-lookup-kbd" aria-hidden="true">/</kbd>
     </form>
 </div>
