@@ -53,7 +53,7 @@ PLUGINS_CONFIG = {
     },
     "nautobot_route_tracking": {
         # Retention period in days for route entries (default: 90)
-        "route_retention_days": 90,
+        "retention_days": 90,
 
         # Number of Nornir parallel workers (default: 50)
         "nornir_workers": 50,
@@ -108,7 +108,7 @@ Supported `network_driver` values:
 | Arista EOS | `arista_eos` | `eos` |
 | Juniper JunOS | `juniper_junos` | `junos` |
 
-**Note**: Palo Alto PAN-OS is not supported. The NAPALM PAN-OS driver raises `NotImplementedError` on `get_route_to()`. Devices with a PAN-OS platform are automatically skipped during collection.
+**Note**: Palo Alto PAN-OS is not supported. The NAPALM PAN-OS driver lacks CLI parsing support for routing tables. Devices with a PAN-OS platform are automatically skipped during collection.
 
 ### Platform with `napalm_driver`
 
@@ -256,7 +256,7 @@ The targeted device has no Platform assigned, or the Platform has an empty `netw
 ### No routes collected despite successful job
 
 1. Run the job with `commit=False` (dry-run) to see what would be collected without writing to the database.
-2. Check the job logs for per-device warnings (e.g., empty `get_route_to()` result).
+2. Check the job logs for per-device warnings (e.g., empty CLI output, no routes collected).
 3. Confirm the device's routing table is populated: connect to the device directly and run the equivalent `show ip route` command.
 
 ## References

@@ -38,7 +38,7 @@ PLUGINS_CONFIG = {
         "use_config_context": {"connection_options": True},
     },
     "nautobot_route_tracking": {
-        "route_retention_days": 90,
+        "retention_days": 90,
         "nornir_workers": 50,
         "device_timeout": 30,
     },
@@ -313,7 +313,7 @@ def process_route_results(device: Device, routes: dict[str, list]) -> dict[str, 
 
     Args:
         device: Nautobot Device instance.
-        routes: Dict of prefix -> list of next-hop dicts, as returned by get_route_to().
+        routes: Dict of prefix -> list of next-hop dicts, as returned by napalm_cli.
 
     Returns:
         Dict with keys: {"updated": int, "created": int, "errors": int}.
@@ -391,7 +391,7 @@ logger.info(f"Device {device.name} updated")
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/):
 
-```
+```text
 feat: add VRF filter to collection job
 fix: normalize protocol to lowercase before storage
 docs: update usage guide with BGP warning
@@ -422,7 +422,7 @@ For large refactoring tasks or feature implementations that touch multiple indep
 
 ### Example: adding tests in parallel
 
-```
+```text
 Agent 1: Write tests/test_models.py — validation, constraints, NetDB UPDATE/INSERT
 Agent 2: Write tests/test_filters.py — FK filter inputs, CharFilter inputs
 Agent 3: Write tests/test_api.py — list, detail, filtered endpoints, auth
@@ -437,7 +437,7 @@ Each agent reads the existing source files before writing tests. No two agents m
 - [Nautobot App Development Guide](https://docs.nautobot.com/projects/core/en/stable/development/apps/)
 - [nautobot-plugin-nornir documentation](https://docs.nautobot.com/projects/plugin-nornir/en/latest/)
 - [Network-to-Code Cookiecutter](https://github.com/nautobot/cookiecutter-nautobot-app)
-- [NAPALM `get_route_to()` documentation](https://napalm.readthedocs.io/en/latest/base.html#napalm.base.base.NetworkDriver.get_route_to)
+- [NAPALM documentation](https://napalm.readthedocs.io/en/latest/)
 - [Nornir documentation](https://nornir.readthedocs.io/)
 - [Ruff documentation](https://docs.astral.sh/ruff/)
 - [Factory Boy documentation](https://factoryboy.readthedocs.io/)

@@ -1,7 +1,7 @@
-# Analyse des composants UI — nautobot_netdb_tracking
+# UI Components Analysis -- nautobot_netdb_tracking
 
-**Fichiers analysés** : `filters.py`, `tables.py`, `views.py`, `forms.py`, `urls.py`, `navigation.py`, `template_content.py`, `templates/`
-**Date d'analyse** : 2026-02-18
+**Files analyzed**: `filters.py`, `tables.py`, `views.py`, `forms.py`, `urls.py`, `navigation.py`, `template_content.py`, `templates/`
+**Analysis date**: 2026-02-18
 
 ---
 
@@ -20,52 +20,52 @@ from nautobot_netdb_tracking.models import ARPEntry, MACAddressHistory, Topology
 
 ### `MACAddressHistoryFilterSet(NautobotFilterSet)`
 
-**q (SearchFilter)** : prédicats sur `mac_address`, `device__name`, `interface__name`, `vlan__name` — tous `icontains`.
+**q (SearchFilter)**: predicates on `mac_address`, `device__name`, `interface__name`, `vlan__name` -- all `icontains`.
 
-| Champ | Type | `to_field_name` | `field_name` |
+| Field | Type | `to_field_name` | `field_name` |
 | ----- | ---- | --------------- | ------------ |
 | `device` | `NaturalKeyOrPKMultipleChoiceFilter` | `"name"` | direct |
 | `device_role` | `NaturalKeyOrPKMultipleChoiceFilter` | `"name"` | `"device__role"` |
 | `interface` | `NaturalKeyOrPKMultipleChoiceFilter` | `"name"` | direct |
-| `vlan` | `NaturalKeyOrPKMultipleChoiceFilter` | `"vid"` | direct (vid, pas pk) |
-| `mac_address` | `django_filters.CharFilter` | n/a | method custom |
+| `vlan` | `NaturalKeyOrPKMultipleChoiceFilter` | `"vid"` | direct (vid, not pk) |
+| `mac_address` | `django_filters.CharFilter` | n/a | custom method |
 | `location` | `NaturalKeyOrPKMultipleChoiceFilter` | `"name"` | `"device__location"` |
 | `first_seen_after` | `django_filters.DateTimeFilter` | n/a | `"first_seen"`, `gte` |
 | `first_seen_before` | `django_filters.DateTimeFilter` | n/a | `"first_seen"`, `lte` |
 | `last_seen_after` | `django_filters.DateTimeFilter` | n/a | `"last_seen"`, `gte` |
 | `last_seen_before` | `django_filters.DateTimeFilter` | n/a | `"last_seen"`, `lte` |
 
-Meta : `model=MACAddressHistory`, `fields=[...]`
+Meta: `model=MACAddressHistory`, `fields=[...]`
 
 ### `ARPEntryFilterSet(NautobotFilterSet)`
 
-Mêmes filtres + additions :
+Same filters + additions:
 
-| Champ | Type | Notes |
+| Field | Type | Notes |
 | ----- | ---- | ----- |
-| `ip_address` | `django_filters.CharFilter` | `lookup_expr="icontains"` — bare string |
+| `ip_address` | `django_filters.CharFilter` | `lookup_expr="icontains"` -- bare string |
 | `ip_address_object` | `NaturalKeyOrPKMultipleChoiceFilter` | `queryset=IPAddress`, `to_field_name="host"` |
 | `has_ip_object` | `django_filters.BooleanFilter` | `field_name="ip_address_object"`, `lookup_expr="isnull"`, `exclude=True` |
 
 ### `TopologyConnectionFilterSet(NautobotFilterSet)`
 
-Paires symétriques local/remote pour device, device_role, interface. Plus :
+Symmetric local/remote pairs for device, device_role, interface. Plus:
 
-| Champ | Type | Notes |
+| Field | Type | Notes |
 | ----- | ---- | ----- |
 | `protocol` | `django_filters.MultipleChoiceFilter` | `choices=TopologyConnection.Protocol.choices` |
 | `has_cable` | `django_filters.BooleanFilter` | `field_name="cable"`, `isnull`, `exclude=True` |
 | `location` | `NaturalKeyOrPKMultipleChoiceFilter` | `field_name="local_device__location"` |
 | `remote_location` | `NaturalKeyOrPKMultipleChoiceFilter` | `field_name="remote_device__location"` |
 
-### Format d'input CRITIQUE (tests)
+### CRITICAL Input Format (Tests)
 
 ```python
 # NaturalKeyOrPKMultipleChoiceFilter REQUIRES list input
 filterset = MACAddressHistoryFilterSet({"device": [str(device.pk)]})
-filterset = MACAddressHistoryFilterSet({"vlan": [str(vlan.vid)]})  # vid, pas pk
+filterset = MACAddressHistoryFilterSet({"vlan": [str(vlan.vid)]})  # vid, not pk
 
-# CharFilter / SearchFilter prennent des bare strings
+# CharFilter / SearchFilter take bare strings
 filterset = MACAddressHistoryFilterSet({"mac_address": "00:11:22"})
 filterset = ARPEntryFilterSet({"ip_address": "192.168"})
 ```
@@ -83,8 +83,8 @@ from nautobot.apps.tables import BaseTable, ButtonsColumn, ToggleColumn
 
 ### `MACAddressHistoryTable(BaseTable)`
 
-| Colonne | Type | Détails |
-| ------- | ---- | ------- |
+| Column | Type | Details |
+| ------ | ---- | ------- |
 | `pk` | `ToggleColumn` | bulk checkbox |
 | `device` | `tables.Column` | `linkify=True` |
 | `interface` | `tables.Column` | `linkify=True` |
@@ -96,32 +96,32 @@ from nautobot.apps.tables import BaseTable, ButtonsColumn, ToggleColumn
 | `port_description` | `tables.Column` | `accessor="interface__description"` |
 | `actions` | `ButtonsColumn(MACAddressHistory)` | |
 
-Meta : `model=MACAddressHistory`. `default_columns` exclut `first_seen`.
+Meta: `model=MACAddressHistory`. `default_columns` excludes `first_seen`.
 
-### Variantes
+### Variants
 
-- `MACAddressHistoryDeviceTable(BaseTable)` : sans `device` et `actions` — utilisée sur Device detail tab
-- `MACAddressHistoryInterfaceTable(BaseTable)` : sans `device`, `interface`, `port_status`, `actions` — utilisée sur Interface detail tab
+- `MACAddressHistoryDeviceTable(BaseTable)`: without `device` and `actions` -- used on Device detail tab
+- `MACAddressHistoryInterfaceTable(BaseTable)`: without `device`, `interface`, `port_status`, `actions` -- used on Interface detail tab
 
 ### `ARPEntryTable(BaseTable)`
 
-Colonnes : `pk`, `device`, `interface`, `ip_address` (linkify conditionnel vers `ip_address_object.get_absolute_url()`), `mac_address`, `first_seen`, `last_seen`, `actions`.
+Columns: `pk`, `device`, `interface`, `ip_address` (conditional linkify to `ip_address_object.get_absolute_url()`), `mac_address`, `first_seen`, `last_seen`, `actions`.
 
-`default_columns` omet `interface` et `first_seen`.
+`default_columns` omits `interface` and `first_seen`.
 
 ### `TopologyConnectionTable(BaseTable)`
 
-Colonnes : `pk`, `local_device`, `local_interface`, `remote_device`, `remote_interface`, `protocol`, `cable`, `first_seen`, `last_seen`, `actions`. Tous device/interface/cable avec `linkify=True`.
+Columns: `pk`, `local_device`, `local_interface`, `remote_device`, `remote_interface`, `protocol`, `cable`, `first_seen`, `last_seen`, `actions`. All device/interface/cable with `linkify=True`.
 
-### PIÈGE : Tables dict-based
+### PITFALL: Dict-based Tables
 
 ```python
-# CORRECT — pour tables sans modèle (données dict)
+# CORRECT -- for tables without a model (dict data)
 class SwitchReportTable(tables.Table):
     class Meta:
-        template_name = "inc/table.html"  # explicitement requis
+        template_name = "inc/table.html"  # explicitly required
 
-# WRONG — crash sur CustomField.objects.get_for_model() sans modèle
+# WRONG -- crashes on CustomField.objects.get_for_model() without a model
 class SwitchReportTable(BaseTable):
     ...
 ```
@@ -162,9 +162,9 @@ queryset = TopologyConnection.objects.select_related(
 ).prefetch_related("tags")
 ```
 
-### Tab Views (pattern commun)
+### Tab Views (Common Pattern)
 
-Toutes héritent `LoginRequiredMixin, PermissionRequiredMixin, View`. Toutes utilisent `get_paginate_count(request)` + `EnhancedPaginator` via `RequestConfig`.
+All inherit `LoginRequiredMixin, PermissionRequiredMixin, View`. All use `get_paginate_count(request)` + `EnhancedPaginator` via `RequestConfig`.
 
 ```python
 from nautobot.core.views.paginator import EnhancedPaginator, get_paginate_count
@@ -176,14 +176,14 @@ RequestConfig(
 ).configure(table)
 ```
 
-| Classe | Permission | Template | Table |
-| ------ | ---------- | -------- | ----- |
+| Class | Permission | Template | Table |
+| ----- | ---------- | -------- | ----- |
 | `DeviceMACTabView` | `view_macaddresshistory` | `device_mac_tab.html` | `MACAddressHistoryDeviceTable` |
 | `DeviceARPTabView` | `view_arpentry` | `device_arp_tab.html` | `ARPEntryDeviceTable` |
 | `DeviceTopologyTabView` | `view_topologyconnection` | `device_topology_tab.html` | `TopologyConnectionDeviceTable` |
 | `InterfaceMACTabView` | `view_macaddresshistory` | `interface_mac_tab.html` | `MACAddressHistoryInterfaceTable` |
 
-`DeviceTopologyTabView` utilise `Q(local_device=device) | Q(remote_device=device)`.
+`DeviceTopologyTabView` uses `Q(local_device=device) | Q(remote_device=device)`.
 
 ---
 
@@ -209,22 +209,22 @@ urlpatterns = [
 urlpatterns += router.urls
 ```
 
-**app_name obligatoire** pour les noms de routes (`{% url 'nautobot_netdb_tracking:...' %}`).
+**`app_name` is required** for route naming (`{% url 'nautobot_netdb_tracking:...' %}`).
 
 ---
 
 ## 5. navigation.py
 
-```
+```text
 NavMenuTab: "NetDB Tracking" (weight=500)
 +-- NavMenuGroup: "Topology" (weight=200)
-    NavMenuItem "Topology Connections" → topologyconnection_list, perm: view_topologyconnection
-    NavMenuAddButton → topologyconnection_add, perm: add_topologyconnection
+    NavMenuItem "Topology Connections" -> topologyconnection_list, perm: view_topologyconnection
+    NavMenuAddButton -> topologyconnection_add, perm: add_topologyconnection
 ```
 
-MAC History et ARP Entries n'ont **pas** de NavMenuItem — accès via Dashboard et tabs.
+MAC History and ARP Entries do **not** have a NavMenuItem -- access via Dashboard and tabs.
 
-Pattern de permissions sur les items : `permissions=["nautobot_netdb_tracking.view_topologyconnection"]`.
+Permission pattern on items: `permissions=["nautobot_netdb_tracking.view_topologyconnection"]`.
 
 ---
 
@@ -238,22 +238,22 @@ template_extensions = [DeviceNetDBTab, InterfaceNetDBTab]
 
 ### `DeviceNetDBTab` (`model="dcim.device"`)
 
-- `detail_tabs()` : 3 onglets — "MAC Addresses", "ARP Entries", "Topology"
-  - Chaque onglet = `{"title": "...", "url": reverse("nautobot_netdb_tracking:device_mac_tab", kwargs={"pk": self.context["object"].pk})}`
-- `right_page()` : 3 COUNT queries → rendu `inc/device_netdb_panel.html` avec `mac_count`, `arp_count`, `topology_count`
+- `detail_tabs()`: 3 tabs -- "MAC Addresses", "ARP Entries", "Topology"
+  - Each tab = `{"title": "...", "url": reverse("nautobot_netdb_tracking:device_mac_tab", kwargs={"pk": self.context["object"].pk})}`
+- `right_page()`: 3 COUNT queries -> renders `inc/device_netdb_panel.html` with `mac_count`, `arp_count`, `topology_count`
 
 ### `InterfaceNetDBTab` (`model="dcim.interface"`)
 
-- `detail_tabs()` : 1 onglet — "MAC Addresses"
-- `right_page()` : 4 queries, rendu `inc/interface_netdb_panel.html`
+- `detail_tabs()`: 1 tab -- "MAC Addresses"
+- `right_page()`: 4 queries, renders `inc/interface_netdb_panel.html`
 
 ---
 
-## 7. Templates — Patterns critiques
+## 7. Templates -- Critical Patterns
 
-### Fichiers (liste complète)
+### Files (Complete List)
 
-```
+```text
 templates/nautobot_netdb_tracking/
 ├── dashboard.html
 ├── device_mac_tab.html
@@ -265,7 +265,7 @@ templates/nautobot_netdb_tracking/
     └── interface_netdb_panel.html
 ```
 
-### Tab templates — Structure exacte
+### Tab Templates -- Exact Structure
 
 ```django
 {% extends "generic/object_detail.html" %}
@@ -285,7 +285,7 @@ templates/nautobot_netdb_tracking/
   {% if table.data %}
   <div class="card-footer">
     <a href="{% url 'nautobot_netdb_tracking:macaddresshistory_list' %}?device={{ object.pk }}">
-      View all →
+      View all ->
     </a>
   </div>
   {% endif %}
@@ -293,9 +293,9 @@ templates/nautobot_netdb_tracking/
 {% endblock %}
 ```
 
-**CRITIQUE** : Les tabs étendent `generic/object_detail.html` (pas `base.html`).
+**CRITICAL**: Tabs extend `generic/object_detail.html` (not `base.html`).
 
-### Dashboard / Report templates — Structure
+### Dashboard / Report Templates -- Structure
 
 ```django
 {% extends "base.html" %}
@@ -306,39 +306,39 @@ templates/nautobot_netdb_tracking/
 {% block breadcrumbs %}{% endblock %}
 
 {% block content %}
-  ...cards statistiques...
+  ...stats cards...
   {% render_table table "inc/table.html" %}
-  {# Pour dict-based table avec paginator manuel : #}
+  {# For dict-based table with manual paginator: #}
   {% include 'inc/paginator.html' with paginator=paginator page=page %}
-  {# Pour table RequestConfig : #}
+  {# For table with RequestConfig: #}
   {% include 'inc/paginator.html' with paginator=table.paginator page=table.page %}
 {% endblock %}
 ```
 
-### Panel templates (inc/)
+### Panel Templates (inc/)
 
 ```django
 {% load helpers %}
 <div class="card">...</div>
 ```
 
-Pas de `{% extends %}`, pas de `{% block %}` — rendus via `TemplateExtension.right_page()`.
+No `{% extends %}`, no `{% block %}` -- rendered via `TemplateExtension.right_page()`.
 
 ---
 
-## 8. Patterns critiques — Récapitulatif
+## 8. Critical Patterns -- Summary
 
-### Toujours `inc/table.html`
+### Always `inc/table.html`
 
 ```django
 {% render_table table "inc/table.html" %}              {# CORRECT #}
 {% render_table table "django_tables2/bootstrap5.html" %}  {# WRONG #}
 ```
 
-### Toujours `EnhancedPaginator` + `inc/paginator.html`
+### Always `EnhancedPaginator` + `inc/paginator.html`
 
 ```python
-# Dans la vue
+# In the view
 from nautobot.core.views.paginator import EnhancedPaginator, get_paginate_count
 per_page = get_paginate_count(request)
 RequestConfig(request, paginate={"per_page": per_page, "paginator_class": EnhancedPaginator}).configure(table)
@@ -348,39 +348,39 @@ RequestConfig(request, paginate={"per_page": per_page, "paginator_class": Enhanc
 {% include 'inc/paginator.html' with paginator=table.paginator page=table.page %}
 ```
 
-### `{% load %}` sur lignes séparées
+### `{% load %}` on Separate Lines
 
 ```django
 {% load helpers humanize %}
 {% load render_table from django_tables2 %}
 ```
 
-Jamais : `{% load helpers humanize render_table from django_tables2 %}` — Django misparse `from`.
+Never: `{% load helpers humanize render_table from django_tables2 %}` -- Django misparsesthe `from`.
 
-### Pas de `<h1>` dans `{% block content %}`
+### No `<h1>` in `{% block content %}`
 
-`{% block title %}` suffit — Nautobot rend le `<h1>` via `inc/page_title.html`.
+`{% block title %}` is sufficient -- Nautobot renders the `<h1>` via `inc/page_title.html`.
 
-### Breadcrumbs vides sur les pages liste/dashboard
+### Empty Breadcrumbs on List/Dashboard Pages
 
 ```django
 {% block breadcrumbs %}{% endblock %}
 ```
 
-### Tabs héritent de `generic/object_detail.html`
+### Tabs Inherit from `generic/object_detail.html`
 
 ```django
-{% extends "generic/object_detail.html" %}  {# CORRECT pour les tabs #}
-{% extends "base.html" %}                   {# WRONG pour les tabs #}
+{% extends "generic/object_detail.html" %}  {# CORRECT for tabs #}
+{% extends "base.html" %}                   {# WRONG for tabs #}
 ```
 
-### `block.super` dans le bloc javascript
+### `block.super` in the JavaScript Block
 
 ```django
 {% block javascript %}{{ block.super }}<script>...</script>{% endblock %}
 ```
 
-### `NautobotUIViewSet` — Attributs obligatoires
+### `NautobotUIViewSet` -- Required Attributes
 
 ```python
 class RouteEntryUIViewSet(NautobotUIViewSet):
@@ -390,14 +390,14 @@ class RouteEntryUIViewSet(NautobotUIViewSet):
     action_buttons = ("export",)
 ```
 
-### `NaturalKeyOrPKMultipleChoiceFilter` — Input format
+### `NaturalKeyOrPKMultipleChoiceFilter` -- Input Format
 
 ```python
-# FK filters → liste de strings (pk ou natural key)
+# FK filters -> list of strings (pk or natural key)
 filterset = RouteEntryFilterSet({"device": [str(device.pk)]})
 filterset = RouteEntryFilterSet({"vrf": [str(vrf.pk)]})
 
-# CharFilter → bare string
+# CharFilter -> bare string
 filterset = RouteEntryFilterSet({"network": "10.0.0"})
 filterset = RouteEntryFilterSet({"q": "search term"})
 ```
@@ -443,4 +443,4 @@ router.register("topology-connections", TopologyConnectionViewSet)
 urlpatterns = router.urls
 ```
 
-**Note** : `OrderedDefaultRouter` (pas `DefaultRouter`) pour garantir l'ordre stable des routes.
+**Note**: `OrderedDefaultRouter` (not `DefaultRouter`) to guarantee stable route ordering.

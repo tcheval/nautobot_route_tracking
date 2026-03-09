@@ -48,7 +48,11 @@ Full GraphQL support with FilterSet integration.
 ## Installation
 
 ```bash
-pip install nautobot-route-tracking
+# From GitHub Release
+pip install https://github.com/tcheval/nautobot_route_tracking/releases/download/v1.2.0/nautobot_route_tracking-1.2.0-py3-none-any.whl
+
+# Or from source
+pip install git+https://github.com/tcheval/nautobot_route_tracking.git
 ```
 
 Add to `nautobot_config.py`:

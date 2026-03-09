@@ -74,12 +74,16 @@ class RouteEntryFilterSet(NautobotFilterSet):
         if not value:
             return queryset
 
-        # Try as bare IP address → containment search
+        # Try as bare IP address → containment search via PostgreSQL CIDR operator
         try:
             addr = ipaddress.ip_address(value)
-            return queryset.extra(
-                where=["network::cidr >>= %s::inet"],
-                params=[str(addr)],
+            return queryset.filter(
+                pk__in=RouteEntry.objects.filter(
+                    pk__in=RawSQL(
+                        "SELECT id FROM nautobot_route_tracking_routeentry WHERE network::cidr >>= %s::inet",
+                        [str(addr)],
+                    ),
+                ),
             )
         except ValueError:
             pass
@@ -93,9 +97,7 @@ class RouteEntryFilterSet(NautobotFilterSet):
 
         # Fallback: text search
         return queryset.filter(
-            Q(network__icontains=value)
-            | Q(next_hop__icontains=value)
-            | Q(device__name__icontains=value)
+            Q(network__icontains=value) | Q(next_hop__icontains=value) | Q(device__name__icontains=value)
         )
 
     device = NaturalKeyOrPKMultipleChoiceFilter(

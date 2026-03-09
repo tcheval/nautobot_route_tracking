@@ -136,21 +136,19 @@ class RouteDashboardView(ObjectPermissionRequiredMixin, View):
         last_seen_entry = qs.order_by("-last_seen").values_list("last_seen", flat=True).first()
 
         # --- Charts data ---
-        protocol_data = list(
-            qs.values("protocol").annotate(count=Count("id")).order_by("-count")
-        )
-        top_devices = list(
-            qs.values("device__name").annotate(count=Count("id")).order_by("-count")[:10]
-        )
-        location_data = list(
-            qs.values("device__location__name").annotate(count=Count("id")).order_by("-count")[:10]
-        )
+        protocol_data = list(qs.values("protocol").annotate(count=Count("id")).order_by("-count"))
+        top_devices = list(qs.values("device__name").annotate(count=Count("id")).order_by("-count")[:10])
+        location_data = list(qs.values("device__location__name").annotate(count=Count("id")).order_by("-count")[:10])
 
         # --- Recent routes table (last 24h) ---
-        recent_routes_qs = qs.filter(
-            first_seen__gte=now - timedelta(hours=24),
-        ).select_related("device", "vrf").order_by("-first_seen")
-        recent_table = RouteEntryTable(list(recent_routes_qs[:25]))
+        recent_routes_qs = (
+            qs.filter(
+                first_seen__gte=now - timedelta(hours=24),
+            )
+            .select_related("device", "vrf")
+            .order_by("-first_seen")
+        )
+        recent_table = RouteEntryTable(recent_routes_qs[:25])
 
         context = {
             "total_routes": total_routes,

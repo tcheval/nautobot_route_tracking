@@ -1,11 +1,11 @@
-# Analyse des Jobs — nautobot_netdb_tracking
+# Jobs Analysis -- nautobot_netdb_tracking
 
-**Fichiers analysés** : `jobs/__init__.py`, `jobs/_base.py`, `jobs/collect_mac_arp.py`, `jobs/purge_old_data.py`
-**Date d'analyse** : 2026-02-18
+**Files analyzed**: `jobs/__init__.py`, `jobs/_base.py`, `jobs/collect_mac_arp.py`, `jobs/purge_old_data.py`
+**Analysis date**: 2026-02-18
 
 ---
 
-## 1. `jobs/__init__.py` — Registration pattern
+## 1. `jobs/__init__.py` -- Registration Pattern
 
 ```python
 from nautobot.core.celery import register_jobs
@@ -19,16 +19,17 @@ jobs = [CollectMACARPJob, CollectTopologyJob, PurgeOldDataJob]
 register_jobs(*jobs)
 ```
 
-Points critiques :
-- Import depuis `nautobot.core.celery` (pas `nautobot.apps.jobs`)
-- `register_jobs(*jobs)` appelé au niveau module (pas dans `ready()`)
-- Sans cet appel, les jobs n'apparaissent pas dans l'UI Nautobot
+Critical points:
+
+- Import from `nautobot.core.celery` (not `nautobot.apps.jobs`)
+- `register_jobs(*jobs)` called at module level (not in `ready()`)
+- Without this call, jobs do not appear in the Nautobot UI
 
 ---
 
-## 2. `jobs/_base.py` — `BaseCollectionJob`
+## 2. `jobs/_base.py` -- `BaseCollectionJob`
 
-### 2.1 Imports critiques
+### 2.1 Critical Imports
 
 ```python
 from nautobot.apps.jobs import BooleanVar, IntegerVar, Job, ObjectVar
@@ -39,7 +40,7 @@ from nornir.core.exceptions import NornirSubTaskError
 from nornir.core.plugins.inventory import InventoryPluginRegister
 ```
 
-### 2.2 Constantes
+### 2.2 Constants
 
 ```python
 SUPPORTED_PLATFORMS: tuple[str, ...] = (
@@ -66,7 +67,7 @@ INTERFACE_ABBREVIATIONS: dict[str, str] = {
 }
 ```
 
-### 2.3 `_extract_nornir_error()` — Module-level function (CRITIQUE)
+### 2.3 `_extract_nornir_error()` -- Module-level Function (CRITICAL)
 
 ```python
 def _extract_nornir_error(exc: NornirSubTaskError) -> str:
@@ -81,9 +82,9 @@ def _extract_nornir_error(exc: NornirSubTaskError) -> str:
     return str(exc)
 ```
 
-**PIÈGE** : `exc.result` est une `MultiResult` (liste), pas un objet unique. Ne jamais faire `exc.result.exception`.
+**PITFALL**: `exc.result` is a `MultiResult` (list), not a single object. Never do `exc.result.exception`.
 
-### 2.4 NautobotORMInventory registration
+### 2.4 NautobotORMInventory Registration
 
 ```python
 try:
@@ -93,9 +94,9 @@ except ImportError:
     NautobotORMInventory = None
 ```
 
-Enregistrement au niveau module (une seule fois à l'import).
+Registration at module level (once at import time).
 
-### 2.5 `normalize_interface_name()` — Module-level function
+### 2.5 `normalize_interface_name()` -- Module-level Function
 
 ```python
 def normalize_interface_name(interface: str) -> str:
@@ -112,7 +113,7 @@ def normalize_interface_name(interface: str) -> str:
     return interface
 ```
 
-### 2.6 `BaseCollectionJob` — Variables
+### 2.6 `BaseCollectionJob` -- Variables
 
 | Variable | Type | Default | Description |
 | -------- | ---- | ------- | ----------- |
@@ -126,7 +127,7 @@ def normalize_interface_name(interface: str) -> str:
 | `commit` | `BooleanVar` | `True` | Commit changes (False = dry-run) |
 | `debug_mode` | `BooleanVar` | `False` | Enable verbose debug logging |
 
-### 2.7 `get_target_devices()` — Logique complète
+### 2.7 `get_target_devices()` -- Complete Logic
 
 ```python
 def get_target_devices(self, device, dynamic_group, device_role, location, tag) -> QuerySet[Device]:
@@ -161,20 +162,22 @@ def get_target_devices(self, device, dynamic_group, device_role, location, tag) 
     return queryset.distinct()
 ```
 
-**Points critiques** :
-- `location.descendants(include_self=True)` → inclut les sous-sites automatiquement
-- Filtre `SUPPORTED_PLATFORMS` toujours appliqué en dernier
-- `distinct()` pour éviter les doublons avec M2M tags
+**Critical points**:
 
-### 2.8 `initialize_nornir()` — Configuration complète
+- `location.descendants(include_self=True)` -> automatically includes child locations
+- `SUPPORTED_PLATFORMS` filter always applied last
+- `distinct()` to avoid duplicates with M2M tags
 
-Flux de configuration :
-1. Build `napalm_driver_map` et `napalm_args_map` depuis les platforms des devices
-2. Create `inventory_config` avec `NautobotORMInventory` + `CredentialsNautobotSecrets` + defaults (timeouts)
+### 2.8 `initialize_nornir()` -- Complete Configuration
+
+Configuration flow:
+
+1. Build `napalm_driver_map` and `napalm_args_map` from device platforms
+2. Create `inventory_config` with `NautobotORMInventory` + `CredentialsNautobotSecrets` + defaults (timeouts)
 3. `InitNornir(runner=threaded, logging, inventory)`
-4. **Post-init fix** : pour chaque host, injecter `napalm_driver` et fusionner `napalm_args` dans `optional_args`
+4. **Post-init fix**: for each host, inject `napalm_driver` and merge `napalm_args` into `optional_args`
 
-Le post-init fix est nécessaire car `NautobotORMInventory` set `host.platform = network_driver` (ex. `"arista_eos"`) mais NAPALM a besoin de `napalm_driver` (ex. `"eos"`).
+The post-init fix is necessary because `NautobotORMInventory` sets `host.platform = network_driver` (e.g. `"arista_eos"`) but NAPALM needs `napalm_driver` (e.g. `"eos"`).
 
 ```python
 for host_name, host in nr.inventory.hosts.items():
@@ -197,13 +200,13 @@ for host_name, host in nr.inventory.hosts.items():
                     opt_args[key] = value
 ```
 
-**`RuntimeError`** levée si `devices.exists() == False` ou si Nornir init échoue.
+**`RuntimeError`** raised if `devices.exists() == False` or if Nornir init fails.
 
 ---
 
-## 3. `jobs/collect_mac_arp.py` — `CollectMACARPJob`
+## 3. `jobs/collect_mac_arp.py` -- `CollectMACARPJob`
 
-### 3.1 Constantes spécifiques
+### 3.1 Specific Constants
 
 ```python
 EXCLUDED_MAC_PREFIXES: tuple[str, ...] = (
@@ -219,7 +222,7 @@ EXCLUDED_MAC_PREFIXES: tuple[str, ...] = (
 )
 ```
 
-### 3.2 Meta class
+### 3.2 Meta Class
 
 ```python
 class Meta:
@@ -235,7 +238,7 @@ class Meta:
     time_limit = 7200        # 2 hours
 ```
 
-### 3.3 Variables supplémentaires (en plus de BaseCollectionJob)
+### 3.3 Additional Variables (on top of BaseCollectionJob)
 
 | Variable | Type | Default | Description |
 | -------- | ---- | ------- | ----------- |
@@ -244,7 +247,7 @@ class Meta:
 | `collect_interfaces` | `BooleanVar` | `True` | Sync interface state |
 | `collect_vlans` | `BooleanVar` | `False` | Sync VLAN/switchport mode |
 
-### 3.4 `__init__()` — Stats tracking
+### 3.4 `__init__()` -- Stats Tracking
 
 ```python
 def __init__(self, *args, **kwargs):
@@ -259,54 +262,54 @@ def __init__(self, *args, **kwargs):
     }
 ```
 
-### 3.5 Collection Tasks (module-level Nornir functions)
+### 3.5 Collection Tasks (Module-level Nornir Functions)
 
-#### `collect_mac_table_task(task)` — Pattern NAPALM + TextFSM fallback
+#### `collect_mac_table_task(task)` -- NAPALM + TextFSM Fallback Pattern
 
-```
+```text
 1. Try napalm_get(getters=["get_mac_address_table"])
-   → normalize output: {"interface": str, "mac": str, "vlan": int|None}
-   → filter EXCLUDED_MAC_PREFIXES
-   → return Result(result=[...])
+   -> normalize output: {"interface": str, "mac": str, "vlan": int|None}
+   -> filter EXCLUDED_MAC_PREFIXES
+   -> return Result(result=[...])
 
 On NornirSubTaskError or Exception:
-   → napalm_failed = True
-   → log warning
+   -> napalm_failed = True
+   -> log warning
 
 2. Determine command by platform:
-   - cisco_ios|ios|cisco_xe|arista_eos|eos → "show mac address-table"
-   - cisco_xr|iosxr → "show mac-address-table"
-   - else → Result(failed=True, ...)
+   - cisco_ios|ios|cisco_xe|arista_eos|eos -> "show mac address-table"
+   - cisco_xr|iosxr -> "show mac-address-table"
+   - else -> Result(failed=True, ...)
 
 3. netmiko_send_command(command, use_textfsm=True)
-   → handle TextFSM field name variations:
+   -> handle TextFSM field name variations:
      - interface: destination_port | interface | ports | port
      - mac: destination_address | mac | mac_address
      - vlan: vlan | vlan_id
-   → interface may be a list → take [0]
-   → parse vlan as int (contextlib.suppress ValueError)
-   → return Result(result=[...])
+   -> interface may be a list -> take [0]
+   -> parse vlan as int (contextlib.suppress ValueError)
+   -> return Result(result=[...])
 ```
 
-#### `collect_arp_table_task(task)` — Même pattern
+#### `collect_arp_table_task(task)` -- Same Pattern
 
-```
+```text
 Platform commands:
-  - cisco_ios|ios|cisco_xe → "show ip arp"
-  - cisco_xr|iosxr|arista_eos|eos → "show arp"
+  - cisco_ios|ios|cisco_xe -> "show ip arp"
+  - cisco_xr|iosxr|arista_eos|eos -> "show arp"
 
 TextFSM field variations:
   - interface: interface | port
   - ip: address | ip | ip_address
   - mac: mac | mac_address | hardware
-  - age: age | time (handle "00:01:23" format → seconds)
+  - age: age | time (handle "00:01:23" format -> seconds)
 ```
 
-#### `_combined_collection_task(task, collect_mac, collect_arp, collect_interfaces, collect_vlans)` — Dispatcher
+#### `_combined_collection_task(task, collect_mac, collect_arp, collect_interfaces, collect_vlans)` -- Dispatcher
 
 Runs all subtasks on ONE SSH session. Returns `Result(result={"mac_table": [], "arp_table": [], "interfaces": {}, "vlans": {}, "switchports": {}})`.
 
-### 3.6 `process_mac_results()` — **NetDB UPDATE/INSERT Logic CRITIQUE**
+### 3.6 `process_mac_results()` -- **CRITICAL NetDB UPDATE/INSERT Logic**
 
 ```python
 def process_mac_results(self, device: Device, mac_entries: list[dict]) -> dict[str, int]:
@@ -355,9 +358,9 @@ def process_mac_results(self, device: Device, mac_entries: list[dict]) -> dict[s
     return stats
 ```
 
-**Note** : La logique UPDATE/INSERT réelle est dans `MACAddressHistory.update_or_create_entry()` (model classmethod), pas dans le job directement.
+**Note**: The actual UPDATE/INSERT logic is in `MACAddressHistory.update_or_create_entry()` (model classmethod), not in the job directly.
 
-### 3.7 `process_arp_results()` — Avec orphan filtering
+### 3.7 `process_arp_results()` -- With Orphan Filtering
 
 ```python
 # 3. Filter orphan ARPs: skip if MAC not observed on any switchport
@@ -366,55 +369,55 @@ if known_macs is not None and mac_normalized not in known_macs:
     continue
 ```
 
-Paramètre `known_macs: set[str] | None` — si `None`, aucun filtrage.
+Parameter `known_macs: set[str] | None` -- if `None`, no filtering.
 
-### 3.8 `run()` — Workflow en 7 étapes
+### 3.8 `run()` -- 7-Step Workflow
 
-```
+```text
 1. get_target_devices(device, dynamic_group, device_role, location, tag)
-   → si 0 devices → return {success: False, message: "No devices matched"}
+   -> if 0 devices -> return {success: False, message: "No devices matched"}
 
 2. initialize_nornir(devices, workers, timeout)
-   → si RuntimeError → return {success: False, error: ...}
+   -> if RuntimeError -> return {success: False, error: ...}
 
 3. Build device_map: {device_name: Device} from Nornir inventory
-   → log warning for devices not in inventory (missing credentials)
-   → si device_map vide → return {success: False, message: "No devices in inventory"}
+   -> log warning for devices not in inventory (missing credentials)
+   -> if device_map empty -> return {success: False, message: "No devices in inventory"}
 
 4. nr.run(task=_combined_collection_task, ...)
-   → SINGLE PARALLEL call for ALL hosts simultaneously
-   → record collection_elapsed time
+   -> SINGLE PARALLEL call for ALL hosts simultaneously
+   -> record collection_elapsed time
 
-5. Pass 1: Pour chaque device dans device_map:
+5. Pass 1: For each device in device_map:
    - host_result = results[device_name]
-   - si host_result.failed → stats["devices_failed"]++; continue
-   - si collected_total == 0 → stats["devices_failed"]++; continue
-   - si commit:
-     * process_mac_results() → stats["mac_*"]
-     * process_interface_results() → stats["iface_*"]
-     * process_vlan_results() → stats["vlan_*"]
+   - if host_result.failed -> stats["devices_failed"]++; continue
+   - if collected_total == 0 -> stats["devices_failed"]++; continue
+   - if commit:
+     * process_mac_results() -> stats["mac_*"]
+     * process_interface_results() -> stats["iface_*"]
+     * process_vlan_results() -> stats["vlan_*"]
    - else: log DRY-RUN counts
    - stats["devices_success"]++
-   - Cache collected_data pour Pass 2
+   - Cache collected_data for Pass 2
 
-6. Build known_macs set (si collect_arp et commit):
+6. Build known_macs set (if collect_arp and commit):
    known_macs = set of MAC addresses seen in last 24h from MACAddressHistory
 
-7. Pass 2: ARP processing (si collect_arp et commit):
-   Pour chaque device avec collected_data:
+7. Pass 2: ARP processing (if collect_arp and commit):
+   For each device with collected_data:
      process_arp_results(device, arp_entries, known_macs=known_macs)
 
 8. Log summary (grouping="summary")
 
-RuntimeError levée SEULEMENT si devices_success == 0 ET devices_failed > 0
+RuntimeError raised ONLY if devices_success == 0 AND devices_failed > 0
 (total failure = ALL devices failed)
 ```
 
 ---
 
-## 4. `jobs/purge_old_data.py` — `PurgeOldDataJob`
+## 4. `jobs/purge_old_data.py` -- `PurgeOldDataJob`
 
-### 4.1 Meta class
+### 4.1 Meta Class
 
 ```python
 class Meta:
@@ -434,7 +437,7 @@ class Meta:
 | `purge_arp` | `BooleanVar` | `True` | Purge ARP Entries |
 | `purge_topology` | `BooleanVar` | `True` | Purge Topology Connections |
 
-### 4.3 `run()` — Logique complète
+### 4.3 `run()` -- Complete Logic
 
 ```python
 def run(self, *, retention_days, commit, purge_mac, purge_arp, purge_topology):
@@ -463,7 +466,7 @@ def run(self, *, retention_days, commit, purge_mac, purge_arp, purge_topology):
         if purge_topology:
             stats["topology_connections"] = TopologyConnection.objects.filter(last_seen__lt=cutoff_date).count()
 
-    # Log summary avec time.monotonic()
+    # Log summary with time.monotonic()
     job_elapsed = time.monotonic() - job_start
     mode = "Purged" if commit else "Would purge"
     self.logger.info("%s %d records in %.1fs ...", mode, sum(stats.values()), job_elapsed,
@@ -474,9 +477,9 @@ def run(self, *, retention_days, commit, purge_mac, purge_arp, purge_topology):
 
 ---
 
-## 5. Patterns Nornir — Résumé
+## 5. Nornir Patterns -- Summary
 
-### Inventory initialization
+### Inventory Initialization
 
 ```python
 nr = InitNornir(
@@ -498,10 +501,10 @@ nr = InitNornir(
 )
 ```
 
-### Task execution
+### Task Execution
 
 ```python
-# SINGLE parallel run — all hosts simultaneously
+# SINGLE parallel run -- all hosts simultaneously
 results = nr.run(task=_combined_collection_task, collect_mac=True, collect_arp=True, ...)
 
 # Result access
@@ -511,7 +514,7 @@ if host_result.failed:
 data = host_result.result  # dict from Result(result=...)
 ```
 
-### Error handling pattern
+### Error Handling Pattern
 
 ```python
 try:
@@ -526,7 +529,7 @@ except Exception as exc:
 
 ---
 
-## 6. Imports à reproduire dans nautobot_route_tracking
+## 6. Imports to Reproduce in nautobot_route_tracking
 
 ```python
 # jobs/__init__.py
@@ -551,17 +554,17 @@ from django.utils import timezone
 
 ---
 
-## 7. Règles critiques à reproduire
+## 7. Critical Rules to Reproduce
 
-1. `register_jobs(*jobs)` au niveau module de `jobs/__init__.py`
-2. `BaseCollectionJob` hérite de `Job` (pas de `BaseJob` ou autre)
-3. `class Meta: abstract = True` dans `BaseCollectionJob`
-4. Variables définies sur la **classe** (pas dans `__init__`)
-5. `run()` avec `*, **kwargs` pour les paramètres nommés obligatoires
-6. **UNE SEULE** `nr.run()` call — jamais de boucle `for device: nr.filter().run()`
-7. DB writes **séquentiels** après le nr.run() parallèle
-8. `RuntimeError` levée UNIQUEMENT si `devices_success == 0 AND devices_failed > 0`
-9. `validated_save()` partout (jamais `.save()`)
-10. `transaction.atomic()` autour de toutes les opérations DB en lot
-11. `try/except Exception as e` par device — jamais laisser crash
-12. Logging structuré : `extra={"grouping": device.name}` par device, `extra={"grouping": "summary"}` final
+1. `register_jobs(*jobs)` at module level of `jobs/__init__.py`
+2. `BaseCollectionJob` inherits from `Job` (not `BaseJob` or other)
+3. `class Meta: abstract = True` in `BaseCollectionJob`
+4. Variables defined on the **class** (not in `__init__`)
+5. `run()` with `*, **kwargs` for required named parameters
+6. **A SINGLE** `nr.run()` call -- never a `for device: nr.filter().run()` loop
+7. DB writes **sequential** after the parallel nr.run()
+8. `RuntimeError` raised ONLY if `devices_success == 0 AND devices_failed > 0`
+9. `validated_save()` everywhere (never `.save()`)
+10. `transaction.atomic()` around all batch DB operations
+11. `try/except Exception as e` per device -- never let it crash
+12. Structured logging: `extra={"grouping": device.name}` per device, `extra={"grouping": "summary"}` at the end

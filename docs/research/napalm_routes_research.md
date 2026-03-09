@@ -1,13 +1,13 @@
-# Recherche NAPALM — Collecte de routes réseau
+# NAPALM Research -- Network Route Collection
 
-**Date** : 2026-02-18
-**Sources** : napalm.readthedocs.io, github.com/napalm-automation/napalm, nornir_napalm docs
+**Date**: 2026-02-18
+**Sources**: napalm.readthedocs.io, github.com/napalm-automation/napalm, nornir_napalm docs
 
 ---
 
-## 1. `get_route_to()` — API complète
+## 1. `get_route_to()` -- Complete API
 
-### Signature exacte
+### Exact Signature
 
 ```python
 def get_route_to(
@@ -18,12 +18,13 @@ def get_route_to(
 ) -> Dict[str, List[RouteDict]]:
 ```
 
-**Paramètres** :
-- `destination` : Préfixe CIDR ex. `"1.0.0.0/24"` — chaîne vide = toutes les routes
-- `protocol` : Filtre protocole ex. `"ospf"`, `"bgp"`, `"static"`, `"connected"` — chaîne vide = tous
-- `longer` : Si `True`, retourne aussi les sous-préfixes plus spécifiques (support variable par driver)
+**Parameters**:
 
-### Format de retour exact
+- `destination`: CIDR prefix e.g. `"1.0.0.0/24"` -- empty string = all routes
+- `protocol`: Protocol filter e.g. `"ospf"`, `"bgp"`, `"static"`, `"connected"` -- empty string = all
+- `longer`: If `True`, also returns more specific sub-prefixes (support varies by driver)
+
+### Exact Return Format
 
 ```python
 {
@@ -54,29 +55,30 @@ def get_route_to(
 }
 ```
 
-Retourne un **dict** de préfixes → **liste** de next-hops (ECMP possible). Chaque préfixe peut avoir plusieurs next-hops actifs ou inactifs.
+Returns a **dict** of prefixes -> **list** of next-hops (ECMP possible). Each prefix can have multiple active or inactive next-hops.
 
 ---
 
-## 2. Tous les champs du dict de route
+## 2. All Route Dict Fields
 
-| Champ | Type | Description |
+| Field | Type | Description |
 | ----- | ---- | ----------- |
 | `protocol` | `str` | `"BGP"`, `"OSPF"`, `"STATIC"`, `"CONNECTED"`, `"ISIS"`, `"RIP"`, `"EIGRP"`, `"LOCAL"` |
-| `current_active` | `bool` | Route actuellement installée dans la FIB |
-| `last_active` | `bool` | Était active lors du dernier changement |
-| `age` | `int` | Âge en secondes |
-| `preference` | `int` | Distance administrative (AD : OSPF=110, BGP=20/200, STATIC=1, CONNECTED=0) |
-| `next_hop` | `str` | Adresse IP du next-hop (ex. `"172.17.17.17"`) |
-| `outgoing_interface` | `str` | Interface de sortie (ex. `"GigabitEthernet0/1"`) |
-| `selected_next_hop` | `bool` | Next-hop sélectionné parmi plusieurs candidats ECMP |
-| `inactive_reason` | `str` | Raison d'inactivité (chaîne vide si actif) |
-| `routing_table` | `str` | Nom VRF/table (`"default"`, `"inet.0"` sur JunOS, `"management"`, etc.) |
-| `protocol_attributes` | `dict` | Attributs protocole-spécifiques (voir ci-dessous) |
+| `current_active` | `bool` | Route currently installed in the FIB |
+| `last_active` | `bool` | Was active at the last change |
+| `age` | `int` | Age in seconds |
+| `preference` | `int` | Administrative distance (AD: OSPF=110, BGP=20/200, STATIC=1, CONNECTED=0) |
+| `next_hop` | `str` | Next-hop IP address (e.g. `"172.17.17.17"`) |
+| `outgoing_interface` | `str` | Outgoing interface (e.g. `"GigabitEthernet0/1"`) |
+| `selected_next_hop` | `bool` | Next-hop selected among multiple ECMP candidates |
+| `inactive_reason` | `str` | Inactivity reason (empty string if active) |
+| `routing_table` | `str` | VRF/table name (`"default"`, `"inet.0"` on JunOS, `"management"`, etc.) |
+| `protocol_attributes` | `dict` | Protocol-specific attributes (see below) |
 
-### `protocol_attributes` par protocole
+### `protocol_attributes` by Protocol
 
-**BGP** :
+**BGP**:
+
 ```python
 {
     "local_as": 65001,
@@ -90,40 +92,42 @@ Retourne un **dict** de préfixes → **liste** de next-hops (ECMP possible). Ch
 }
 ```
 
-**OSPF** :
+**OSPF**:
+
 ```python
 {
     "metric": 110,
-    "metric_type": "2",  # "1" ou "2"
+    "metric_type": "2",  # "1" or "2"
 }
 ```
 
-**STATIC / CONNECTED** :
+**STATIC / CONNECTED**:
+
 ```python
-{}  # dict vide
+{}  # empty dict
 ```
 
 ---
 
-## 3. Support par driver
+## 3. Driver Support
 
-| Driver | Plateforme | `get_route_to` | Notes |
-| ------ | ---------- | -------------- | ----- |
-| `eos` | Arista EOS | **Oui** | Inconsistances sur CONNECTED (next_hop parfois vide) |
-| `ios` | Cisco IOS/IOS-XE | **Oui** | Bien supporté |
-| `iosxr` | Cisco IOS-XR | **Oui** | Bien supporté |
-| `junos` | Juniper JunOS | **Oui** | `routing_table="inet.0"` au lieu de `"default"` |
-| `nxos` / `nxos_ssh` | Cisco NX-OS | **Oui** | Bien supporté |
-| `panos` | Palo Alto PAN-OS | **Non** | `NotImplementedError` — driver communautaire sans implémentation |
-| `sros` | Nokia SR-OS | Partiel | Support limité |
+| Driver | Platform | `get_route_to` | Notes |
+| ------ | -------- | -------------- | ----- |
+| `eos` | Arista EOS | **Yes** | Inconsistencies on CONNECTED (next_hop sometimes empty) |
+| `ios` | Cisco IOS/IOS-XE | **Yes** | Well supported |
+| `iosxr` | Cisco IOS-XR | **Yes** | Well supported |
+| `junos` | Juniper JunOS | **Yes** | `routing_table="inet.0"` instead of `"default"` |
+| `nxos` / `nxos_ssh` | Cisco NX-OS | **Yes** | Well supported |
+| `panos` | Palo Alto PAN-OS | **No** | `NotImplementedError` -- community driver without implementation |
+| `sros` | Nokia SR-OS | Partial | Limited support |
 
-**Pour notre lab** : `cisco_ios` ✅, `arista_eos` ✅, `panos` ❌ (exclus du scope).
+**For our lab**: `cisco_ios` -- supported, `arista_eos` -- supported, `panos` -- not supported (excluded from scope).
 
 ---
 
-## 4. Exemples de retour par driver
+## 4. Return Examples by Driver
 
-### Arista EOS — OSPF route
+### Arista EOS -- OSPF route
 
 ```python
 {
@@ -145,7 +149,7 @@ Retourne un **dict** de préfixes → **liste** de next-hops (ECMP possible). Ch
 }
 ```
 
-### Cisco IOS — Static route
+### Cisco IOS -- Static route
 
 ```python
 {
@@ -167,7 +171,7 @@ Retourne un **dict** de préfixes → **liste** de next-hops (ECMP possible). Ch
 }
 ```
 
-### Cisco IOS — ECMP BGP (2 next-hops)
+### Cisco IOS -- ECMP BGP (2 next-hops)
 
 ```python
 {
@@ -196,17 +200,17 @@ Retourne un **dict** de préfixes → **liste** de next-hops (ECMP possible). Ch
 
 ---
 
-## 5. Limitations critiques
+## 5. Critical Limitations
 
-### BGP full table — DANGER
+### BGP full table -- DANGER
 
-- **Internet full table** : 900k+ routes en 2026 (IPv4 + IPv6)
-- Ne **JAMAIS** appeler `get_route_to(destination="", protocol="")` sans filtre sur un PE router
-- `get_route_to(destination="", protocol="bgp")` retourne des millions de lignes → timeout + OOM
-- Nautobot worker : limite mémoire 768 MiB → OOM si BGP non filtré
-- **Recommandation** : BGP exclu par défaut, avec `BooleanVar(default=False)` et avertissement explicite
+- **Internet full table**: 900k+ routes in 2026 (IPv4 + IPv6)
+- **NEVER** call `get_route_to(destination="", protocol="")` without a filter on a PE router
+- `get_route_to(destination="", protocol="bgp")` returns millions of lines -> timeout + OOM
+- Nautobot worker: memory limit 768 MiB -> OOM if BGP is unfiltered
+- **Recommendation**: BGP excluded by default, with `BooleanVar(default=False)` and explicit warning
 
-### PAN-OS — Non supporté
+### PAN-OS -- Not Supported
 
 ```python
 # napalm-panos community driver
@@ -214,24 +218,24 @@ def get_route_to(self, destination="", protocol="", longer=False):
     raise NotImplementedError("Feature not yet implemented.")
 ```
 
-Exclure PAN-OS du scope de `nautobot_route_tracking`.
+Exclude PAN-OS from the scope of `nautobot_route_tracking`.
 
-### JunOS — `routing_table` différent
+### JunOS -- Different `routing_table`
 
-- Retourne `"inet.0"` au lieu de `"default"` → stocker `routing_table` brut, pas transformer
-- `longer=True` peut être ignoré silencieusement selon le driver
+- Returns `"inet.0"` instead of `"default"` -> store `routing_table` raw, do not transform
+- `longer=True` may be silently ignored depending on the driver
 
-### Arista EOS — Routes CONNECTED
+### Arista EOS -- CONNECTED Routes
 
-- `next_hop` parfois chaîne vide `""` pour CONNECTED routes (interface directement connectée)
-- `outgoing_interface` contient l'interface dans ce cas
-- Gérer `next_hop = ""` ou `next_hop = None` comme valeur valide
+- `next_hop` sometimes empty string `""` for CONNECTED routes (directly connected interface)
+- `outgoing_interface` contains the interface in this case
+- Handle `next_hop = ""` or `next_hop = None` as valid values
 
 ---
 
-## 6. `get_bgp_neighbors()` — Alternative pour BGP peers
+## 6. `get_bgp_neighbors()` -- Alternative for BGP Peers
 
-Pour collecter les sessions BGP sans les préfixes (moins de volumétrie) :
+To collect BGP sessions without the prefixes (lower volume):
 
 ```python
 {
@@ -259,16 +263,16 @@ Pour collecter les sessions BGP sans les préfixes (moins de volumétrie) :
 
 ---
 
-## 7. Recommandations pour `nautobot_route_tracking`
+## 7. Recommendations for `nautobot_route_tracking`
 
-### Stratégie de collecte
+### Collection Strategy
 
-1. **Méthode primaire** : `get_route_to()` via `nornir_napalm`
-2. **Fallback** : Netmiko + TextFSM `show ip route` (même pattern que `collect_mac_arp.py`)
-3. **BGP exclu par défaut** — ajouter `collect_bgp = BooleanVar(default=False)` avec warning
-4. **Un appel par protocole activé** (OSPF, STATIC, CONNECTED séparément) pour contrôle granulaire
+1. **Primary method**: `get_route_to()` via `nornir_napalm`
+2. **Fallback**: Netmiko + TextFSM `show ip route` (same pattern as `collect_mac_arp.py`)
+3. **BGP excluded by default** -- add `collect_bgp = BooleanVar(default=False)` with warning
+4. **One call per enabled protocol** (OSPF, STATIC, CONNECTED separately) for granular control
 
-### Variables Job recommandées
+### Recommended Job Variables
 
 ```python
 collect_ospf = BooleanVar(default=True, description="Collect OSPF routes")
@@ -280,7 +284,7 @@ collect_bgp = BooleanVar(
 )
 ```
 
-### Préfixes à exclure
+### Prefixes to Exclude
 
 ```python
 EXCLUDED_ROUTE_PREFIXES: tuple[str, ...] = (
@@ -294,9 +298,9 @@ EXCLUDED_ROUTE_PREFIXES: tuple[str, ...] = (
 )
 ```
 
-### Valeurs de `protocol` normalisées
+### Normalized `protocol` Values
 
-Pour éviter les variations entre drivers (EOS = `"OSPF"`, IOS = `"ospf"`, etc.), normaliser en lowercase :
+To avoid variations between drivers (EOS = `"OSPF"`, IOS = `"ospf"`, etc.), normalize to lowercase:
 
 ```python
 PROTOCOL_CHOICES = [
@@ -312,16 +316,15 @@ PROTOCOL_CHOICES = [
 ]
 ```
 
-Normalisation : `entry["protocol"].lower()` avant stockage.
+Normalization: `entry["protocol"].lower()` before storage.
 
 ---
 
-## 8. Intégration Nornir — Pattern à utiliser
+## 8. Nornir Integration -- Pattern to Use
 
 ```python
 from nornir_napalm.plugins.tasks import napalm_get
 from nornir.core.task import Result, Task
-
 
 def collect_routes_task(task: Task, protocols: list[str]) -> Result:
     """Collect routing table entries via NAPALM get_route_to()."""
@@ -356,23 +359,23 @@ def collect_routes_task(task: Task, protocols: list[str]) -> Result:
 
 ---
 
-## 9. Usage dans `nautobot_netdb_tracking` — NAPALM getters utilisés
+## 9. Usage in `nautobot_netdb_tracking` -- NAPALM Getters Used
 
-| Getter | Fichier | Usage |
-| ------ | ------- | ----- |
+| Getter | File | Usage |
+| ------ | ---- | ----- |
 | `get_mac_address_table` | `collect_mac_arp.py` | MAC table collection |
 | `get_arp_table` | `collect_mac_arp.py` | ARP table collection |
 | `get_interfaces` | `collect_mac_arp.py` | Interface state sync |
 | `get_vlans` | `collect_mac_arp.py` | VLAN/switchport sync |
 | `get_lldp_neighbors_detail` | `collect_topology.py` | LLDP neighbor discovery |
 
-**`get_route_to`** n'est pas encore utilisé → c'est le nouveau getter à implémenter.
+**`get_route_to`** is not yet used -- this is the new getter to implement.
 
 ---
 
-## 10. Modèle de données RouteEntry proposé
+## 10. Proposed RouteEntry Data Model
 
-D'après les champs de `get_route_to()` :
+Based on the fields from `get_route_to()`:
 
 ```python
 class RouteEntry(PrimaryModel):
@@ -391,4 +394,4 @@ class RouteEntry(PrimaryModel):
     last_seen = models.DateTimeField()
 ```
 
-**UniqueConstraint** : `(device, vrf, network, next_hop, protocol)` — ECMP = entrées séparées par next_hop.
+**UniqueConstraint**: `(device, vrf, network, next_hop, protocol)` -- ECMP = separate entries per next_hop.

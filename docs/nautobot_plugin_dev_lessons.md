@@ -1,33 +1,33 @@
 # Nautobot Plugin Development - Lessons Learned
 
-Guide de survie pour le developpement de plugins Nautobot 3.x. Chaque section documente un piege rencontre en production et la solution correcte.
+Survival guide for Nautobot 3.x plugin development. Each section documents a pitfall encountered in production and the correct solution.
 
-## Table des matieres
+## Table of Contents
 
-- [Nornir et parallelisme](#nornir-et-parallelisme)
-- [NautobotORMInventory et NAPALM](#nautobotorminventory-et-napalm)
-- [Nautobot 3.x - Modeles et ORM](#nautobot-3x---modeles-et-orm)
+- [Nornir and Parallelism](#nornir-and-parallelism)
+- [NautobotORMInventory and NAPALM](#nautobotorminventory-and-napalm)
+- [Nautobot 3.x - Models and ORM](#nautobot-3x---models-and-orm)
 - [Nautobot 3.x - Jobs](#nautobot-3x---jobs)
-- [Nautobot 3.x - API et serializers](#nautobot-3x---api-et-serializers)
+- [Nautobot 3.x - API and Serializers](#nautobot-3x---api-and-serializers)
 - [Nautobot 3.x - Tests](#nautobot-3x---tests)
-- [Django - Vues et templates](#django---vues-et-templates)
-- [Vues custom avec filter sidebar et pagination](#vues-custom-avec-filter-sidebar-et-pagination)
+- [Django - Views and Templates](#django---views-and-templates)
+- [Custom Views with Filter Sidebar and Pagination](#custom-views-with-filter-sidebar-and-pagination)
 - [Django - Signals](#django---signals)
-- [Python - Qualite de code](#python---qualite-de-code)
-- [Configuration et packaging](#configuration-et-packaging)
-- [FakeNOS et tests d'integration](#fakenos-et-tests-dintegration)
-- [Nautobot Status - Pieges semantiques](#nautobot-status---pieges-semantiques)
-- [Docker - Deploiement a chaud du plugin](#docker---deploiement-a-chaud-du-plugin)
+- [Python - Code Quality](#python---code-quality)
+- [Configuration and Packaging](#configuration-and-packaging)
+- [FakeNOS and Integration Tests](#fakenos-and-integration-tests)
+- [Nautobot Status - Semantic Pitfalls](#nautobot-status---semantic-pitfalls)
+- [Docker - Hot Deployment of the Plugin](#docker---hot-deployment-of-the-plugin)
 
 ---
 
-## Nornir et parallelisme
+## Nornir and Parallelism
 
-### Pattern golden-config (REFERENCE)
+### Golden-config Pattern (REFERENCE)
 
-Le pattern de reference est celui de [nautobot-app-golden-config](https://github.com/nautobot/nautobot-app-golden-config/tree/v3.0.2/nautobot_golden_config/nornir_plays). Tout job Nornir doit le suivre.
+The reference pattern is from [nautobot-app-golden-config](https://github.com/nautobot/nautobot-app-golden-config/tree/v3.0.2/nautobot_golden_config/nornir_plays). Every Nornir job must follow it.
 
-**Correct** : un seul `nr.run()` sur tous les hosts en parallele.
+**Correct**: a single `nr.run()` across all hosts in parallel.
 
 ```python
 def run(self, *, devices, workers, timeout, commit, **kwargs):
@@ -57,19 +57,19 @@ def run(self, *, devices, workers, timeout, commit, **kwargs):
         # process results...
 ```
 
-### Erreurs a ne JAMAIS faire
+### Mistakes to NEVER Make
 
-| Anti-pattern | Pourquoi c'est mauvais |
-| ------------ | ---------------------- |
-| Boucle serielle de reachability check AVANT `nr.run()` | Defeat le parallelisme. Un check TCP par device = N * 5s en serie |
-| `nr.filter(name=device_name).run()` dans une boucle | Idem — execution sequentielle deguisee |
-| Retry logic apres `nr.run()` avec `time.sleep()` | Bloque tout le job. Nornir gere les timeouts nativement |
-| `tenacity` retry decorator sur `_collect_from_host()` | Complexite inutile. Si un device fail, il fail — on log et on continue |
-| `_collect_from_host()` per-device method | Dead code quand on utilise `_combined_*_task` avec `nr.run()` |
+| Anti-pattern | Why it is wrong |
+| ------------ | --------------- |
+| Serial reachability check loop BEFORE `nr.run()` | Defeats parallelism. One TCP check per device = N * 5s serially |
+| `nr.filter(name=device_name).run()` in a loop | Same problem — disguised sequential execution |
+| Retry logic after `nr.run()` with `time.sleep()` | Blocks the entire job. Nornir handles timeouts natively |
+| `tenacity` retry decorator on `_collect_from_host()` | Unnecessary complexity. If a device fails, it fails — log and move on |
+| `_collect_from_host()` per-device method | Dead code when using `_combined_*_task` with `nr.run()` |
 
-### Task combinee (pattern correct)
+### Combined Task (correct pattern)
 
-Pour collecter plusieurs types de donnees sur un meme host dans une seule session SSH :
+To collect multiple data types from the same host in a single SSH session:
 
 ```python
 def _combined_collection_task(task, *, collect_mac=True, collect_arp=True):
@@ -96,21 +96,21 @@ def _combined_collection_task(task, *, collect_mac=True, collect_arp=True):
     return Result(host=host, result=result_data)
 ```
 
-### NornirSubTaskError : extraction de la root cause (CRITIQUE)
+### NornirSubTaskError: Extracting the Root Cause (CRITICAL)
 
-Quand `task.run()` echoue (SSH timeout, connection refused, auth failure), Nornir raise `NornirSubTaskError`. L'attribut `exc.result` est un **`MultiResult`** (liste de `Result`), PAS un `Result` unique. Acceder a `exc.result.exception` ne fonctionne jamais car les listes n'ont pas d'attribut `.exception`.
+When `task.run()` fails (SSH timeout, connection refused, auth failure), Nornir raises `NornirSubTaskError`. The `exc.result` attribute is a **`MultiResult`** (list of `Result`), NOT a single `Result`. Accessing `exc.result.exception` never works because lists do not have an `.exception` attribute.
 
 ```python
-# MAUVAIS — exc.result est une liste, .exception n'existe pas
-# Fallback sur str(exc) = "Subtask: collect_mac_table_task (failed)"
+# BAD — exc.result is a list, .exception does not exist
+# Falls back to str(exc) = "Subtask: collect_mac_table_task (failed)"
 except NornirSubTaskError as exc:
     root_cause = (
         exc.result.exception
         if hasattr(exc.result, "exception") and exc.result.exception
-        else exc  # ← toujours ce branch, message generique inutile
+        else exc  # ← always this branch, useless generic message
     )
 
-# BON — iterer le MultiResult pour trouver le Result failed
+# GOOD — iterate the MultiResult to find the failed Result
 def _extract_nornir_error(exc: NornirSubTaskError) -> str:
     """Extract root cause from NornirSubTaskError.
 
@@ -126,56 +126,56 @@ def _extract_nornir_error(exc: NornirSubTaskError) -> str:
                     return str(r.result)
     return str(exc)
 
-# Utilisation
+# Usage
 except NornirSubTaskError as exc:
     root_cause = _extract_nornir_error(exc)
     # → "TCP connection to device failed. Common causes: ..."
 ```
 
-**Avant** (message inutile) :
+**Before** (useless message):
 
-```
+```text
 [error] [arista-sw01] Collection failed: MAC: Subtask: collect_mac_table_task (failed)
 ```
 
-**Apres** (root cause visible) :
+**After** (visible root cause):
 
-```
+```text
 [error] [arista-sw01] Collection failed: MAC: MAC collection failed (NAPALM + TextFSM):
   TCP connection to device failed.
   Common causes: 1. Incorrect hostname or IP address. 2. Wrong TCP port.
   Device settings: arista_eos 172.28.0.11:22
 ```
 
-### Job partiel : ne pas raise RuntimeError sur devices_failed > 0
+### Partial Job: Do Not Raise RuntimeError When devices_failed > 0
 
-Un job de collecte sur 1500 devices aura inevitablement quelques echecs (maintenance, panne, ACL). Marquer le job entier comme FAILURE empeche le monitoring de distinguer un vrai probleme d'un fonctionnement normal.
+A collection job running on 1500 devices will inevitably have some failures (maintenance, outage, ACL). Marking the entire job as FAILURE prevents monitoring from distinguishing a real problem from normal operation.
 
 ```python
-# MAUVAIS — 3 devices down sur 1500 = job FAILURE + RuntimeError dans Celery
+# BAD — 3 devices down out of 1500 = job FAILURE + RuntimeError in Celery
 if self.stats["devices_failed"] > 0:
     raise RuntimeError(summary_msg)
 
-# BON — FAILURE uniquement si AUCUN device n'a reussi (panne infra globale)
+# GOOD — FAILURE only if NO device succeeded (global infrastructure outage)
 if self.stats["devices_success"] == 0 and self.stats["devices_failed"] > 0:
     raise RuntimeError(summary_msg)
 
 return {
-    "success": self.stats["devices_failed"] == 0,  # True si 100% success
+    "success": self.stats["devices_failed"] == 0,  # True if 100% success
     "summary": summary_msg,
     **self.stats,
 }
 ```
 
-| Scenario | Avant | Apres |
-| -------- | ----- | ----- |
+| Scenario | Before | After |
+| -------- | ------ | ----- |
 | 1500/1500 OK | SUCCESS | SUCCESS |
-| 1497/1500 OK, 3 down | FAILURE + RuntimeError | SUCCESS (success=False dans result) |
-| 0/1500 OK (panne infra) | FAILURE + RuntimeError | FAILURE + RuntimeError |
+| 1497/1500 OK, 3 down | FAILURE + RuntimeError | SUCCESS (success=False in result) |
+| 0/1500 OK (infra outage) | FAILURE + RuntimeError | FAILURE + RuntimeError |
 
-### Mocking Nornir dans les tests
+### Mocking Nornir in Tests
 
-Toujours mocker `nr.run()` directement, jamais `nr.filter().run()` ni `_collect_from_host` :
+Always mock `nr.run()` directly, never `nr.filter().run()` or `_collect_from_host`:
 
 ```python
 @patch("nautobot_netdb_tracking.jobs._base.InitNornir")
@@ -185,7 +185,7 @@ def test_job_commit_mode(self, mock_init_nornir, device_with_platform, interface
     mock_nr.inventory.hosts = {device_with_platform.name: MagicMock()}
     mock_init_nornir.return_value = mock_nr
 
-    # Mock nr.run() — PAS nr.filter().run()
+    # Mock nr.run() — NOT nr.filter().run()
     mock_host_result = MagicMock()
     mock_host_result.failed = False
     mock_host_result.result = {"mac_table": [...], "arp_table": [...]}
@@ -198,22 +198,22 @@ def test_job_commit_mode(self, mock_init_nornir, device_with_platform, interface
 
 ---
 
-## NautobotORMInventory et NAPALM
+## NautobotORMInventory and NAPALM
 
-### Probleme : network_driver != napalm_driver
+### Problem: network_driver != napalm_driver
 
-`NautobotORMInventory` utilise `Platform.network_driver` (ex: `arista_eos`) pour `host.platform`. Mais NAPALM attend `Platform.napalm_driver` (ex: `eos`). Sans correction, NAPALM echoue a trouver le bon driver.
+`NautobotORMInventory` uses `Platform.network_driver` (e.g., `arista_eos`) for `host.platform`. But NAPALM expects `Platform.napalm_driver` (e.g., `eos`). Without correction, NAPALM fails to find the correct driver.
 
-### Probleme : les extras host-level ecrasent les defaults
+### Problem: Host-level extras overwrite defaults
 
-Les extras configures par host dans `NautobotORMInventory` (via config context) **remplacent** les defaults passes a InitNornir, au lieu de les merger. On perd donc `transport`, `timeout`, etc.
+Extras configured per host in `NautobotORMInventory` (via config context) **replace** the defaults passed to InitNornir, instead of merging them. This causes loss of `transport`, `timeout`, etc.
 
-### Solution : injection post-init
+### Solution: Post-init injection
 
-Apres `InitNornir()`, boucler sur les hosts pour :
+After `InitNornir()`, loop over hosts to:
 
-1. Setter `napalm_opts.platform` depuis `Platform.napalm_driver`
-2. Merger `Platform.napalm_args` dans `napalm_opts.extras.optional_args`
+1. Set `napalm_opts.platform` from `Platform.napalm_driver`
+2. Merge `Platform.napalm_args` into `napalm_opts.extras.optional_args`
 
 ```python
 # Build maps BEFORE InitNornir
@@ -241,9 +241,9 @@ for host_name, host in nr.inventory.hosts.items():
                 opt_args[key] = value
 ```
 
-### Config context pour le port SSH
+### Config Context for Custom SSH Port
 
-Le port SSH custom (ex: FakeNOS sur 6001-6005) doit etre dans le config context du device, sous la cle `nautobot_plugin_nornir.connection_options` :
+The custom SSH port (e.g., FakeNOS on ports 6001-6005) must be in the device's config context, under the `nautobot_plugin_nornir.connection_options` key:
 
 ```json
 {
@@ -256,22 +256,22 @@ Le port SSH custom (ex: FakeNOS sur 6001-6005) doit etre dans le config context 
 }
 ```
 
-Necessite `use_config_context.connection_options: True` dans `PLUGINS_CONFIG["nautobot_plugin_nornir"]`.
+Requires `use_config_context.connection_options: True` in `PLUGINS_CONFIG["nautobot_plugin_nornir"]`.
 
 ---
 
-## Nautobot 3.x - Modeles et ORM
+## Nautobot 3.x - Models and ORM
 
-### IPAddress : champs renommes depuis Nautobot 2.x
+### IPAddress: Fields Renamed Since Nautobot 2.x
 
 | Nautobot 2.x | Nautobot 3.x | Notes |
 | ------------ | ------------ | ----- |
-| `address="10.0.0.1/24"` | `host="10.0.0.1"` + `mask_length=24` | Separe en deux champs |
-| `namespace=ns` | `parent=prefix` | Le namespace est porte par le Prefix |
+| `address="10.0.0.1/24"` | `host="10.0.0.1"` + `mask_length=24` | Split into two fields |
+| `namespace=ns` | `parent=prefix` | The namespace is carried by the Prefix |
 
-### Job.grouping ecrase par validated_save()
+### Job.grouping Overwritten by validated_save()
 
-Le champ `grouping` d'un Job est ecrase par `validated_save()`. Utiliser `QuerySet.update()` :
+The `grouping` field of a Job is overwritten by `validated_save()`. Use `QuerySet.update()`:
 
 ```python
 Job.objects.filter(module_name__startswith="nautobot_netdb_tracking").update(
@@ -279,37 +279,37 @@ Job.objects.filter(module_name__startswith="nautobot_netdb_tracking").update(
 )
 ```
 
-### validated_save() TOUJOURS
+### validated_save() ALWAYS
 
-Jamais `.save()` ni `objects.create()`. Toujours `instance.validated_save()` ou le pattern `update_or_create_entry` custom.
+Never use `.save()` or `objects.create()`. Always use `instance.validated_save()` or the custom `update_or_create_entry` pattern.
 
 ### select_related / prefetch_related
 
-Jamais de queryset dans une boucle. Pre-fetch :
+Never query inside a loop. Pre-fetch:
 
 ```python
-# MAUVAIS — N+1 queries
+# BAD — N+1 queries
 for mac in MACAddressHistory.objects.all():
     print(mac.device.name)
 
-# BON — 1 query
+# GOOD — 1 query
 for mac in MACAddressHistory.objects.select_related("device", "interface"):
     print(mac.device.name)
 ```
 
-### Cable : Status obligatoire en Nautobot 3.x
+### Cable: Status Required in Nautobot 3.x
 
-En Nautobot 3.x, le modele Cable **exige** un Status. Sans ca, `validated_save()` leve une `ValidationError`. Toujours recuperer le Status "Connected" avant de creer un Cable :
+In Nautobot 3.x, the Cable model **requires** a Status. Without it, `validated_save()` raises a `ValidationError`. Always retrieve the "Connected" Status before creating a Cable:
 
 ```python
-# MAUVAIS — ValidationError: Status is required
+# BAD — ValidationError: Status is required
 cable = Cable(
     termination_a=interface_a,
     termination_b=interface_b,
 )
 cable.validated_save()
 
-# BON
+# GOOD
 from nautobot.extras.models import Status
 
 cable_status = Status.objects.get_for_model(Cable).get(name="Connected")
@@ -321,12 +321,12 @@ cable = Cable(
 cable.validated_save()
 ```
 
-### UniqueConstraint : convention de nommage
+### UniqueConstraint: Naming Convention
 
-Les noms de `UniqueConstraint` doivent utiliser le prefixe `%(app_label)s_%(class)s_` pour eviter les collisions entre plugins :
+`UniqueConstraint` names must use the `%(app_label)s_%(class)s_` prefix to avoid collisions between plugins:
 
 ```python
-# MAUVAIS — risque de collision avec d'autres plugins
+# BAD — risk of collision with other plugins
 class Meta:
     constraints = [
         models.UniqueConstraint(
@@ -335,7 +335,7 @@ class Meta:
         )
     ]
 
-# BON — prefixe unique par app/model
+# GOOD — unique prefix per app/model
 class Meta:
     constraints = [
         models.UniqueConstraint(
@@ -345,9 +345,9 @@ class Meta:
     ]
 ```
 
-### natural_key_field_lookups pour les modeles
+### natural_key_field_lookups for Models
 
-Les modeles Nautobot 3.x doivent definir `natural_key_field_lookups` dans leur Meta pour le support des natural keys dans l'API et les filtres. Sans ca, les lookups par natural key echouent silencieusement :
+Nautobot 3.x models must define `natural_key_field_lookups` in their Meta for natural key support in the API and filters. Without this, natural key lookups fail silently:
 
 ```python
 class MACAddressHistory(PrimaryModel):
@@ -359,17 +359,17 @@ class MACAddressHistory(PrimaryModel):
         }
 ```
 
-### Race condition : count() puis delete()
+### Race Condition: count() Then delete()
 
-Le pattern `count()` suivi de `delete()` est non-atomique. Un autre processus peut modifier les donnees entre les deux appels. Utiliser la valeur de retour de `delete()` :
+The `count()` followed by `delete()` pattern is non-atomic. Another process can modify the data between the two calls. Use the return value of `delete()`:
 
 ```python
-# MAUVAIS — race condition, le count peut ne pas correspondre au delete
+# BAD — race condition, the count may not match the delete
 count = queryset.filter(last_seen__lt=cutoff).count()
 queryset.filter(last_seen__lt=cutoff).delete()
 stats["deleted"] = count
 
-# BON — atomique, pas de fenetre de race
+# GOOD — atomic, no race window
 deleted_count, _ = queryset.filter(last_seen__lt=cutoff).delete()
 stats["deleted"] = deleted_count
 ```
@@ -378,9 +378,9 @@ stats["deleted"] = deleted_count
 
 ## Nautobot 3.x - Jobs
 
-### Enregistrement des jobs (OBLIGATOIRE)
+### Job Registration (MANDATORY)
 
-`jobs/__init__.py` DOIT appeler `register_jobs()`. Sans ca, les jobs sont importables mais n'apparaissent pas dans l'UI :
+`jobs/__init__.py` MUST call `register_jobs()`. Without it, jobs are importable but do not appear in the UI:
 
 ```python
 from nautobot.core.celery import register_jobs
@@ -390,34 +390,34 @@ jobs = [MyJob]
 register_jobs(*jobs)
 ```
 
-### ScriptVariable : acces aux attributs
+### ScriptVariable: Accessing Attributes
 
-Les defaults et contraintes sont dans `field_attrs`, pas en attributs directs :
+Defaults and constraints are in `field_attrs`, not as direct attributes:
 
 ```python
-# MAUVAIS
+# BAD
 job.retention_days.default  # AttributeError
 job.retention_days.min_value  # AttributeError
 
-# BON
+# GOOD
 job.retention_days.field_attrs["initial"]  # 90
 job.retention_days.field_attrs["min_value"]  # 1
 ```
 
-### Plugin registration en test
+### Plugin Registration in Tests
 
-`test_settings.py` a besoin des DEUX :
+`test_settings.py` needs BOTH:
 
 ```python
-PLUGINS = ["nautobot_netdb_tracking"]           # pour nautobot-server (CI)
-INSTALLED_APPS.append("nautobot_netdb_tracking")  # pour pytest-django
+PLUGINS = ["nautobot_netdb_tracking"]           # for nautobot-server (CI)
+INSTALLED_APPS.append("nautobot_netdb_tracking")  # for pytest-django
 ```
 
-`django.setup()` ne traite PAS `PLUGINS`. `nautobot-server` ne lit PAS `DJANGO_SETTINGS_MODULE`.
+`django.setup()` does NOT process `PLUGINS`. `nautobot-server` does NOT read `DJANGO_SETTINGS_MODULE`.
 
-### CI : migrations
+### CI: Migrations
 
-Utiliser `nautobot-server init` puis ajouter le plugin, pas `django-admin` :
+Use `nautobot-server init` then add the plugin, not `django-admin`:
 
 ```yaml
 - name: Initialize Nautobot configuration
@@ -430,66 +430,66 @@ Utiliser `nautobot-server init` puis ajouter le plugin, pas `django-admin` :
 
 ---
 
-## Nautobot 3.x - API et serializers
+## Nautobot 3.x - API and Serializers
 
-### select_related dans les ViewSets API
+### select_related in API ViewSets
 
-Les `NautobotModelViewSet` doivent inclure **tous** les champs FK utilises par le serializer dans `select_related()`. Sinon, chaque objet serialise genere des requetes supplementaires (N+1) :
+`NautobotModelViewSet` instances must include **all** FK fields used by the serializer in `select_related()`. Otherwise, each serialized object generates additional queries (N+1):
 
 ```python
-# MAUVAIS — ip_address_object est dans le serializer mais pas dans select_related
+# BAD — ip_address_object is in the serializer but not in select_related
 class ARPEntryViewSet(NautobotModelViewSet):
     queryset = ARPEntry.objects.select_related(
         "device", "device__location", "interface",
     ).prefetch_related("tags")
 
-# BON — tous les FK du serializer sont pre-charges
+# GOOD — all serializer FK fields are pre-loaded
 class ARPEntryViewSet(NautobotModelViewSet):
     queryset = ARPEntry.objects.select_related(
         "device", "device__location", "interface", "ip_address_object",
     ).prefetch_related("tags")
 ```
 
-**Regle** : pour chaque champ FK dans le `fields` du serializer, verifier qu'il est dans `select_related()` du ViewSet correspondant (UI et API).
+**Rule**: for every FK field in the serializer's `fields`, verify it is in the corresponding ViewSet's `select_related()` (both UI and API).
 
-### Nested serializers : ne pas creer de code mort
+### Nested Serializers: Do Not Create Dead Code
 
-Ne pas declarer de serializers "nested" ou "lite" par anticipation. Un serializer non-importe nulle part est du code mort qui cree de la confusion et de la dette technique :
+Do not declare "nested" or "lite" serializers in anticipation. A serializer that is not imported anywhere is dead code that creates confusion and technical debt:
 
 ```python
-# MAUVAIS — serializer declare mais jamais utilise
+# BAD — serializer declared but never used
 class MACAddressHistoryNestedSerializer(NautobotModelSerializer):
     class Meta:
         model = MACAddressHistory
         fields = ["id", "url", "display", "mac_address", "last_seen"]
 
-# BON — ne creer que ce qui est effectivement utilise
-# Si un nested serializer devient necessaire, le creer a ce moment-la
+# GOOD — only create what is actually used
+# If a nested serializer becomes necessary, create it at that time
 ```
 
 ---
 
 ## Nautobot 3.x - Tests
 
-### FilterSet : format des inputs
+### FilterSet: Input Formats
 
-| Type de filtre | Format attendu | Exemple |
-| -------------- | -------------- | ------- |
-| `NaturalKeyOrPKMultipleChoiceFilter` (FK) | Liste de strings | `{"device": [str(device.pk)]}` |
-| `CharFilter` | String simple | `{"mac_address": "00:11:22"}` |
+| Filter type | Expected format | Example |
+| ----------- | --------------- | ------- |
+| `NaturalKeyOrPKMultipleChoiceFilter` (FK) | List of strings | `{"device": [str(device.pk)]}` |
+| `CharFilter` | Simple string | `{"mac_address": "00:11:22"}` |
 
-### NaturalKeyOrPKMultipleChoiceFilter : to_field_name
+### NaturalKeyOrPKMultipleChoiceFilter: to_field_name
 
-`NaturalKeyOrPKMultipleChoiceFilter` utilise `to_field_name="name"` par defaut pour le lookup par natural key. Mais certains modeles Nautobot n'ont pas de champ `name` — par exemple `IPAddress` qui utilise `host` :
+`NaturalKeyOrPKMultipleChoiceFilter` uses `to_field_name="name"` by default for natural key lookup. But some Nautobot models do not have a `name` field — for example `IPAddress` uses `host`:
 
 ```python
-# MAUVAIS — FieldError: Cannot resolve keyword 'name' into field
+# BAD — FieldError: Cannot resolve keyword 'name' into field
 ip_address_object = NaturalKeyOrPKMultipleChoiceFilter(
     queryset=IPAddress.objects.all(),
     label="IPAM IP Address",
 )
 
-# BON — specifier le bon champ de lookup
+# GOOD — specify the correct lookup field
 ip_address_object = NaturalKeyOrPKMultipleChoiceFilter(
     queryset=IPAddress.objects.all(),
     to_field_name="host",
@@ -497,41 +497,41 @@ ip_address_object = NaturalKeyOrPKMultipleChoiceFilter(
 )
 ```
 
-**Regle** : toujours verifier que le modele cible a un champ `name`. Sinon, specifier `to_field_name` explicitement.
+**Rule**: always verify that the target model has a `name` field. Otherwise, specify `to_field_name` explicitly.
 
-### BaseTable : pas de configure()
+### BaseTable: No configure()
 
-Nautobot `BaseTable` n'a PAS de methode `configure(request)`. Ne jamais l'appeler :
+Nautobot `BaseTable` does NOT have a `configure(request)` method. Never call it:
 
 ```python
-# MAUVAIS — AttributeError
+# BAD — AttributeError
 table = MACAddressHistoryTable(data)
 table.configure(request)
 
-# BON
+# GOOD
 table = MACAddressHistoryTable(data)
 ```
 
-Les cellules null FK peuvent render en `&mdash;` (HTML entity), pas juste `—` ou `""`.
+Null FK cells may render as `&mdash;` (HTML entity), not just `—` or `""`.
 
-### Tab view templates : render_table et obj_table.html
+### Tab View Templates: render_table and obj_table.html
 
-`{% render_table table %}` sans argument template utilise le `DJANGO_TABLES2_TEMPLATE` de Nautobot (`utilities/obj_table.html`). Ce template accede a `table.context` qui n'existe que si la table a ete configuree via `RequestConfig`. Les tab views (Device/Interface tabs) creent des tables sans `RequestConfig` → crash `AttributeError: object has no attribute 'context'`.
+`{% render_table table %}` without a template argument uses the Nautobot `DJANGO_TABLES2_TEMPLATE` (`utilities/obj_table.html`). This template accesses `table.context` which only exists if the table was configured via `RequestConfig`. Tab views (Device/Interface tabs) create tables without `RequestConfig` — crash `AttributeError: object has no attribute 'context'`.
 
 ```django
-{# MAUVAIS — crash sur les tab views #}
+{# BAD — crashes on tab views #}
 {% render_table table %}
 
-{# BON — force un template simple qui ne requiert pas table.context #}
+{# GOOD — forces a simple template that does not require table.context #}
 {% render_table table "django_tables2/bootstrap5.html" %}
 ```
 
-### test_settings.py : CACHES doit inclure TIMEOUT
+### test_settings.py: CACHES Must Include TIMEOUT
 
-La config `CACHES` dans `test_settings.py` doit inclure `"TIMEOUT"` sinon `KeyError: 'TIMEOUT'` :
+The `CACHES` config in `test_settings.py` must include `"TIMEOUT"` otherwise `KeyError: 'TIMEOUT'`:
 
 ```python
-# MAUVAIS
+# BAD
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
@@ -539,7 +539,7 @@ CACHES = {
     }
 }
 
-# BON
+# GOOD
 CACHES = {
     "default": {
         "BACKEND": "django_redis.cache.RedisCache",
@@ -550,29 +550,29 @@ CACHES = {
 }
 ```
 
-### Nautobot 3.x export : ExportTemplate obligatoire
+### Nautobot 3.x Export: ExportTemplate Required
 
-Nautobot 3.x utilise des objets `ExportTemplate` pour l'export CSV/YAML. Sans `ExportTemplate` configuree, une requete `?export=csv` retourne **404** (pas un CSV vide ni une erreur 500). Les tests doivent en tenir compte :
+Nautobot 3.x uses `ExportTemplate` objects for CSV/YAML export. Without a configured `ExportTemplate`, a `?export=csv` request returns **404** (not an empty CSV or a 500 error). Tests must account for this:
 
 ```python
-# BON — tester que l'export sans template renvoie 404
+# GOOD — test that export without template returns 404
 def test_export_without_template(self, authenticated_client):
     url = reverse("plugins:myapp:mymodel_list")
     response = authenticated_client.get(url, {"export": "csv"})
     assert response.status_code == 404
 ```
 
-### API test URLs : reverse() vs hardcoded paths
+### API Test URLs: reverse() vs Hardcoded Paths
 
-`reverse()` avec des namespaces imbriques (`plugins-api:myapp-api:mymodel-list`) est fragile dans les environnements de test ou les URLs du plugin sont injectees dans les resolvers de Nautobot. Le cache de `URLResolver.namespace_dict` n'est pas toujours correctement invalide.
+`reverse()` with nested namespaces (`plugins-api:myapp-api:mymodel-list`) is fragile in test environments where plugin URLs are injected into Nautobot's resolvers. The `URLResolver.namespace_dict` cache is not always properly invalidated.
 
-**Solution fiable** : utiliser des chemins URL hardcodes dans les tests API :
+**Reliable solution**: use hardcoded URL paths in API tests:
 
 ```python
-# MAUVAIS — NoReverseMatch si le namespace n'est pas correctement injecte
+# BAD — NoReverseMatch if the namespace is not properly injected
 url = reverse("plugins-api:nautobot_netdb_tracking-api:macaddresshistory-list")
 
-# BON — fiable, pas de dependance au resolver
+# GOOD — reliable, no dependency on the resolver
 _API_BASE = "/api/plugins/netdb-tracking"
 
 def _mac_list_url():
@@ -582,31 +582,31 @@ def _mac_detail_url(pk):
     return f"{_API_BASE}/mac-address-history/{pk}/"
 ```
 
-### Mocking des jobs Nornir
+### Mocking Nornir Jobs
 
-Voir la section [Mocking Nornir dans les tests](#mocking-nornir-dans-les-tests).
+See the section [Mocking Nornir in Tests](#mocking-nornir-in-tests).
 
-Le job ne raise `RuntimeError` que si **tous** les devices echouent (`devices_success == 0`). Pour les echecs partiels, le job retourne normalement avec `success=False` :
+The job only raises `RuntimeError` if **all** devices fail (`devices_success == 0`). For partial failures, the job returns normally with `success=False`:
 
 ```python
-# Test echec partiel — le job retourne normalement
+# Test partial failure — the job returns normally
 result = job.run(...)
 assert result["success"] is False
 assert job.stats["devices_failed"] == 1
 assert job.stats["devices_success"] > 0
 
-# Test echec total — le job raise RuntimeError
+# Test total failure — the job raises RuntimeError
 with pytest.raises(RuntimeError):
-    job.run(...)  # tous les devices echouent
+    job.run(...)  # all devices fail
 assert job.stats["devices_success"] == 0
 ```
 
-### conftest.py : utiliser validated_save()
+### conftest.py: Use validated_save()
 
-Les fixtures de test doivent utiliser `validated_save()`, pas `.create()` ni `.save()`. Cela garantit que les memes validations appliquees en production sont exercees dans les tests :
+Test fixtures must use `validated_save()`, not `.create()` or `.save()`. This ensures that the same validations applied in production are exercised in tests:
 
 ```python
-# MAUVAIS — contourne les validations du modele
+# BAD — bypasses model validations
 @pytest.fixture
 def mac_entry(device, interface):
     return MACAddressHistory.objects.create(
@@ -614,7 +614,7 @@ def mac_entry(device, interface):
         last_seen=timezone.now()
     )
 
-# BON — valide les contraintes et clean()
+# GOOD — validates constraints and clean()
 @pytest.fixture
 def mac_entry(device, interface):
     entry = MACAddressHistory(
@@ -625,20 +625,20 @@ def mac_entry(device, interface):
     return entry
 ```
 
-### Couverture de tests : zones souvent oubliees
+### Test Coverage: Commonly Overlooked Areas
 
-Les categories suivantes sont frequemment oubliees et causent des regressions en production :
+The following categories are frequently overlooked and cause regressions in production:
 
-| Zone a tester | Pourquoi |
-| ------------- | -------- |
-| Forms (`NautobotModelForm`, `NautobotFilterForm`) | Valider les `query_params`, `required`, widgets, et la methode `clean()` |
-| TemplateExtension (`template_content.py`) | Verifier le rendu HTML, les contextes, et les requetes N+1 dans les panels |
-| Permissions sur les vues custom | Verifier que les vues non-NautobotUIViewSet renvoient 403/302 pour les anonymes |
-| CI test job actif | Le job de test dans `.github/workflows/ci.yml` ne doit jamais etre commente |
+| Area to test | Why |
+| ------------ | --- |
+| Forms (`NautobotModelForm`, `NautobotFilterForm`) | Validate `query_params`, `required`, widgets, and the `clean()` method |
+| TemplateExtension (`template_content.py`) | Verify HTML rendering, contexts, and N+1 queries in panels |
+| Permissions on custom views | Verify that non-NautobotUIViewSet views return 403/302 for anonymous users |
+| Active CI test job | The test job in `.github/workflows/ci.yml` must never be commented out |
 
-### Tests de permissions sur les vues
+### Permission Tests on Views
 
-Toujours tester qu'un utilisateur non-authentifie est redirige (302) ou rejete (403) :
+Always test that an unauthenticated user is redirected (302) or rejected (403):
 
 ```python
 def test_dashboard_requires_login(client):
@@ -656,11 +656,11 @@ def test_dashboard_requires_permission(authenticated_client):
 
 ---
 
-## Django - Vues et templates
+## Django - Views and Templates
 
-### Mixins d'authentification
+### Authentication Mixins
 
-Les vues custom (non-NautobotUIViewSet) DOIVENT avoir les mixins auth :
+Custom views (non-NautobotUIViewSet) MUST have auth mixins:
 
 ```python
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -669,17 +669,17 @@ class NetDBDashboardView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "nautobot_netdb_tracking.view_macaddresshistory"
 ```
 
-`NautobotUIViewSet` gere l'auth automatiquement. Les `View` Django standard ne le font PAS.
+`NautobotUIViewSet` handles auth automatically. Standard Django `View` classes do NOT.
 
-**Attention aux tab views** : les vues utilisees comme tabs sur les pages Device/Interface via `TemplateExtension` sont des `View` Django standard. Elles sont appelees en AJAX depuis la page detail, mais restent des endpoints HTTP accessibles directement. Sans auth, n'importe quel utilisateur peut acceder aux donnees via l'URL directe :
+**Watch out for tab views**: views used as tabs on Device/Interface pages via `TemplateExtension` are standard Django `View` classes. They are called via AJAX from the detail page, but remain directly accessible HTTP endpoints. Without auth, any user can access the data via the direct URL:
 
 ```python
-# MAUVAIS — accessible sans authentification
+# BAD — accessible without authentication
 class DeviceMACTabView(View):
     def get(self, request, pk):
         ...
 
-# BON — auth + permissions model-specific
+# GOOD — auth + model-specific permissions
 class DeviceMACTabView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "nautobot_netdb_tracking.view_macaddresshistory"
 
@@ -693,46 +693,46 @@ class DeviceTopologyTabView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "nautobot_netdb_tracking.view_topologyconnection"
 ```
 
-**Regle** : chaque `permission_required` doit correspondre au modele affiche par la vue, pas une permission generique commune a toutes les vues.
+**Rule**: each `permission_required` must correspond to the model displayed by the view, not a generic permission shared across all views.
 
 ### QueryDict.pop() vs getlist()
 
-`QueryDict.pop(key)` retourne la **derniere valeur** (un string unique), pas une liste. Pour les parametres multi-valeur (ex: `?device=uuid1&device=uuid2`), utiliser `request.GET.getlist()` :
+`QueryDict.pop(key)` returns the **last value** (a single string), not a list. For multi-value parameters (e.g., `?device=uuid1&device=uuid2`), use `request.GET.getlist()`:
 
 ```python
-# MAUVAIS — retourne "uuid2" (string), pas ["uuid1", "uuid2"]
+# BAD — returns "uuid2" (string), not ["uuid1", "uuid2"]
 devices = request.GET.pop("device", None)
 
-# BON — retourne ["uuid1", "uuid2"]
+# GOOD — returns ["uuid1", "uuid2"]
 devices = request.GET.getlist("device")
 ```
 
-### Template tags
+### Template Tags
 
-Les filtres Django externes necessitent un `{% load %}` explicite :
+External Django filters require an explicit `{% load %}`:
 
 ```django
-{# MAUVAIS — TemplateSyntaxError #}
+{# BAD — TemplateSyntaxError #}
 {% load helpers %}
 {{ value|intcomma }}
 
-{# BON #}
+{# GOOD #}
 {% load helpers humanize %}
 {{ value|intcomma }}
 ```
 
-### Optimisation des queries dans les vues
+### Query Optimization in Views
 
-Utiliser les aggregations DB plutot que les boucles Python :
+Use DB aggregations instead of Python loops:
 
 ```python
-# MAUVAIS — 3 * N queries (N = nombre de jours)
+# BAD — 3 * N queries (N = number of days)
 for day_offset in range(30):
     mac_count = MACAddressHistory.objects.filter(
         first_seen__gte=start, first_seen__lte=end
     ).count()
 
-# BON — 3 queries total
+# GOOD — 3 queries total
 from django.db.models.functions import TruncDate
 mac_counts = dict(
     MACAddressHistory.objects.filter(first_seen__gte=start_date)
@@ -745,69 +745,69 @@ mac_counts = dict(
 
 ---
 
-## Vues custom avec filter sidebar et pagination
+## Custom Views with Filter Sidebar and Pagination
 
-Quand on cree une page custom (pas un `NautobotUIViewSet`) mais qu'on veut le look natif Nautobot — filter sidebar coulissante, pagination, boutons — il y a 5 pieges majeurs. Cette section documente le pattern complet.
+When creating a custom page (not a `NautobotUIViewSet`) but wanting the native Nautobot look — sliding filter sidebar, pagination, buttons — there are 5 major pitfalls. This section documents the complete pattern.
 
-### Piege 1 : `generic/object_list.html` est couple a NautobotUIViewSet
+### Pitfall 1: `generic/object_list.html` Is Coupled to NautobotUIViewSet
 
-**NE PAS** etendre `generic/object_list.html` pour une vue custom. Ce template est fortement couple au contexte fourni par `NautobotHTMLRenderer` :
+**DO NOT** extend `generic/object_list.html` for a custom view. This template is tightly coupled to the context provided by `NautobotHTMLRenderer`:
 
-- `content_type.model_class` — utilise pour `plugin_buttons`, `add_button`, `export_button`, bulk actions
-- `model.is_saved_view_model` — controle la section saved views
-- `table.configurable_columns` — methode de `BaseTable`, absente sur `tables.Table`
+- `content_type.model_class` — used for `plugin_buttons`, `add_button`, `export_button`, bulk actions
+- `model.is_saved_view_model` — controls the saved views section
+- `table.configurable_columns` — method of `BaseTable`, absent on `tables.Table`
 
-**Solution** : etendre `base.html` et ajouter manuellement le drawer + table + pagination.
+**Solution**: extend `base.html` and manually add the drawer + table + pagination.
 
-### Piege 2 : `BaseTable` requiert un `Meta.model`
+### Pitfall 2: `BaseTable` Requires a `Meta.model`
 
-`BaseTable.__init__` appelle `CustomField.objects.get_for_model(model)`. Si `Meta.model` est `None` (table basee sur des dicts, pas un QuerySet), ca crash avec `AttributeError: 'NoneType' object has no attribute '_meta'`.
+`BaseTable.__init__` calls `CustomField.objects.get_for_model(model)`. If `Meta.model` is `None` (table based on dicts, not a QuerySet), it crashes with `AttributeError: 'NoneType' object has no attribute '_meta'`.
 
-**Solution** : utiliser `django_tables2.Table` au lieu de `BaseTable` :
+**Solution**: use `django_tables2.Table` instead of `BaseTable`:
 
 ```python
 import django_tables2 as tables
 
-class MyCustomTable(tables.Table):  # PAS BaseTable !
+class MyCustomTable(tables.Table):  # NOT BaseTable!
     col1 = tables.Column()
     col2 = tables.TemplateColumn(template_code="...")
 
     class Meta:
-        template_name = "django_tables2/bootstrap5.html"  # OBLIGATOIRE (voir piege 3)
+        template_name = "django_tables2/bootstrap5.html"  # MANDATORY (see pitfall 3)
         attrs = {"class": "table table-hover nb-table-headings"}
         fields = ("col1", "col2")
 ```
 
-### Piege 3 : le template django-tables2 par defaut est un template Nautobot custom
+### Pitfall 3: The Default django-tables2 Template Is a Custom Nautobot Template
 
-`DJANGO_TABLES2_TEMPLATE` est configure sur `utilities/obj_table.html` dans Nautobot. Ce template accede a `table.data.verbose_name_plural`, `permissions.change`, `bulk_edit_url`, etc. — tout ca est absent pour une `tables.Table` avec des dicts.
+`DJANGO_TABLES2_TEMPLATE` is configured to `utilities/obj_table.html` in Nautobot. This template accesses `table.data.verbose_name_plural`, `permissions.change`, `bulk_edit_url`, etc. — all of which are absent for a `tables.Table` with dicts.
 
-**Solution** : forcer `template_name = "django_tables2/bootstrap5.html"` dans `Meta`.
+**Solution**: force `template_name = "django_tables2/bootstrap5.html"` in `Meta`.
 
-### Piege 4 : `{% filter_form_drawer %}` a 4 args positionnels obligatoires
+### Pitfall 4: `{% filter_form_drawer %}` Has 4 Mandatory Positional Arguments
 
 ```django
-{# MAUVAIS — TemplateSyntaxError: did not receive value(s) for 'filter_params' #}
+{# BAD — TemplateSyntaxError: did not receive value(s) for 'filter_params' #}
 {% filter_form_drawer filter_form dynamic_filter_form model_plural_name=title %}
 
-{# BON #}
+{# GOOD #}
 {% filter_form_drawer filter_form dynamic_filter_form model_plural_name=title filter_params=filter_params %}
 ```
 
-La vue DOIT passer `dynamic_filter_form` (= `None`) et `filter_params` (= `[]`) dans le contexte.
+The view MUST pass `dynamic_filter_form` (= `None`) and `filter_params` (= `[]`) in the context.
 
-### Piege 5 : `{% load X Y Z from library %}` charge X, Y, Z depuis library
+### Pitfall 5: `{% load X Y Z from library %}` Loads X, Y, Z from library
 
 ```django
-{# MAUVAIS — Django cherche "helpers" et "humanize" dans django_tables2 #}
+{# BAD — Django looks for "helpers" and "humanize" in django_tables2 #}
 {% load helpers humanize render_table from django_tables2 %}
 
-{# BON — load separement #}
+{# GOOD — load separately #}
 {% load helpers humanize %}
 {% load render_table from django_tables2 %}
 ```
 
-### Pattern complet — Vue
+### Complete Pattern — View
 
 ```python
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
@@ -818,7 +818,6 @@ from django_tables2 import RequestConfig
 
 from myapp.forms import MyFilterForm
 from myapp.tables import MyCustomTable
-
 
 class MyCustomView(LoginRequiredMixin, PermissionRequiredMixin, View):
     permission_required = "myapp.view_mymodel"
@@ -838,8 +837,8 @@ class MyCustomView(LoginRequiredMixin, PermissionRequiredMixin, View):
         return render(request, self.template_name, {
             "table": table,
             "filter_form": filter_form,
-            "dynamic_filter_form": None,   # requis par filter_form_drawer
-            "filter_params": [],            # requis par filter_form_drawer
+            "dynamic_filter_form": None,   # required by filter_form_drawer
+            "filter_params": [],            # required by filter_form_drawer
             "title": "My Page",
             "permissions": {"add": False, "change": False, "delete": False, "view": True},
             "action_buttons": (),
@@ -847,7 +846,7 @@ class MyCustomView(LoginRequiredMixin, PermissionRequiredMixin, View):
         })
 ```
 
-### Pattern complet — Form (NautobotFilterForm)
+### Complete Pattern — Form (NautobotFilterForm)
 
 ```python
 from django import forms
@@ -855,13 +854,13 @@ from nautobot.apps.forms import DynamicModelMultipleChoiceField, NautobotFilterF
 from nautobot.dcim.models import Device
 
 class MyFilterForm(NautobotFilterForm):
-    model = Device  # requis par les mixins NautobotFilterForm
+    model = Device  # required by NautobotFilterForm mixins
     q = forms.CharField(required=False, label="Search")
     device = DynamicModelMultipleChoiceField(queryset=Device.objects.all(), required=False)
-    # ... autres champs ...
+    # ... other fields ...
 ```
 
-### Pattern complet — Table (django_tables2.Table)
+### Complete Pattern — Table (django_tables2.Table)
 
 ```python
 import django_tables2 as tables
@@ -879,7 +878,7 @@ class MyCustomTable(tables.Table):
         fields = ("col1", "col2")
 ```
 
-### Pattern complet — Template
+### Complete Pattern — Template
 
 ```django
 {% extends "base.html" %}
@@ -923,38 +922,38 @@ class MyCustomTable(tables.Table):
 {% endblock %}
 ```
 
-### Checklist rapide
+### Quick Checklist
 
-| Element | Comment |
+| Element | How |
 | --- | --- |
-| Table class | `tables.Table` (PAS `BaseTable`) |
+| Table class | `tables.Table` (NOT `BaseTable`) |
 | `Meta.template_name` | `"django_tables2/bootstrap5.html"` |
 | `Meta.attrs` | `{"class": "table table-hover nb-table-headings"}` |
-| Form class | `NautobotFilterForm` avec `model = Device` |
-| Template extends | `base.html` (PAS `generic/object_list.html`) |
-| `{% load %}` | Separer les loads natifs et `from library` |
-| Drawer block | `{% filter_form_drawer %}` avec 4 args |
-| Contexte vue | `dynamic_filter_form=None`, `filter_params=[]` |
+| Form class | `NautobotFilterForm` with `model = Device` |
+| Template extends | `base.html` (NOT `generic/object_list.html`) |
+| `{% load %}` | Separate native loads and `from library` loads |
+| Drawer block | `{% filter_form_drawer %}` with 4 args |
+| View context | `dynamic_filter_form=None`, `filter_params=[]` |
 | Pagination | `RequestConfig(request, paginate={"per_page": 50}).configure(table)` |
-| Bouton filter | `data-nb-toggle="drawer" data-nb-target="#FilterForm_drawer"` |
+| Filter button | `data-nb-toggle="drawer" data-nb-target="#FilterForm_drawer"` |
 
-### Reference : implementation existante
+### Reference: Existing Implementation
 
-Voir `SwitchReportView` dans `views.py`, `SwitchReportTable` dans `tables.py`, `SwitchReportFilterForm` dans `forms.py`, et `switch_report.html`.
+See `SwitchReportView` in `views.py`, `SwitchReportTable` in `tables.py`, `SwitchReportFilterForm` in `forms.py`, and `switch_report.html`.
 
 ---
 
 ## Django - Signals
 
-### post_migrate : toujours specifier sender
+### post_migrate: Always Specify sender
 
-Un signal `post_migrate` sans `sender` s'execute pour **chaque** app Django qui migre (40+ apps dans Nautobot). Specifier le sender pour ne l'executer que pour notre app :
+A `post_migrate` signal without `sender` executes for **every** Django app that migrates (40+ apps in Nautobot). Specify the sender to run it only for our app:
 
 ```python
-# MAUVAIS — s'execute 40+ fois a chaque migrate
+# BAD — executes 40+ times on each migrate
 post_migrate.connect(enable_netdb_jobs)
 
-# BON — s'execute une seule fois pour notre app
+# GOOD — executes once for our app only
 from django.apps import apps
 
 post_migrate.connect(
@@ -963,9 +962,9 @@ post_migrate.connect(
 )
 ```
 
-### Signal receiver : gerer l'idempotence
+### Signal Receiver: Handle Idempotency
 
-Le handler `post_migrate` peut s'executer plusieurs fois (redemarrage, migrations multiples). Toujours ecrire des handlers idempotents :
+The `post_migrate` handler can execute multiple times (restart, multiple migrations). Always write idempotent handlers:
 
 ```python
 def enable_netdb_jobs(sender, **kwargs):
@@ -974,34 +973,34 @@ def enable_netdb_jobs(sender, **kwargs):
 
     Job.objects.filter(
         module_name__startswith="nautobot_netdb_tracking",
-        enabled=False,  # Ne toucher que les jobs pas encore actifs
+        enabled=False,  # Only touch jobs not yet active
     ).update(enabled=True, grouping="NetDB Tracking")
 ```
 
 ---
 
-## Python - Qualite de code
+## Python - Code Quality
 
-### Fonction de normalisation unique (DRY)
+### Single Normalization Function (DRY)
 
-Ne jamais dupliquer une fonction de normalisation (MAC, interface, etc.) dans plusieurs modules. Definir **une seule source de verite** dans le module le plus bas de la hierarchie (typiquement `models.py`) et importer partout :
+Never duplicate a normalization function (MAC, interface, etc.) across multiple modules. Define **one single source of truth** in the lowest module in the hierarchy (typically `models.py`) and import everywhere:
 
 ```python
-# MAUVAIS — deux fonctions quasi-identiques dans deux modules
+# BAD — two nearly identical functions in two modules
 # models.py : normalize_mac_address() → UPPERCASE
 # jobs/collect_mac_arp.py : normalize_mac() → lowercase
 
-# BON — une seule fonction canonique dans models.py
+# GOOD — one canonical function in models.py
 # models.py
 def normalize_mac_address(mac: str) -> str:
     """Normalize MAC to XX:XX:XX:XX:XX:XX."""
     ...
 
-# jobs/collect_mac_arp.py — importer depuis models
+# jobs/collect_mac_arp.py — import from models
 from nautobot_netdb_tracking.models import normalize_mac_address
 ```
 
-Si le wrapper doit adapter l'exception (ex: `ValidationError` → `ValueError`), creer un thin wrapper qui delegue :
+If the wrapper needs to adapt the exception (e.g., `ValidationError` to `ValueError`), create a thin wrapper that delegates:
 
 ```python
 def normalize_mac(mac: str) -> str:
@@ -1012,17 +1011,17 @@ def normalize_mac(mac: str) -> str:
         raise ValueError(str(exc.message)) from exc
 ```
 
-### Imports circulaires entre modules jobs
+### Circular Imports Between Job Modules
 
-Eviter les imports directs entre modules jobs (`collect_mac_arp.py` → `collect_topology.py`). Si une fonction est partagee, l'extraire dans le module de base (`_base.py`) ou dans un module utilitaire (`utils.py`) :
+Avoid direct imports between job modules (`collect_mac_arp.py` to `collect_topology.py`). If a function is shared, extract it into the base module (`_base.py`) or a utility module (`utils.py`):
 
 ```python
-# MAUVAIS — import circulaire potentiel
+# BAD — potential circular import
 # collect_mac_arp.py
 from nautobot_netdb_tracking.jobs.collect_topology import normalize_interface_name
 
-# BON — fonction partagee dans _base.py ou utils.py
-# jobs/_base.py ou jobs/utils.py
+# GOOD — shared function in _base.py or utils.py
+# jobs/_base.py or jobs/utils.py
 def normalize_interface_name(interface: str) -> str:
     ...
 
@@ -1033,117 +1032,117 @@ from nautobot_netdb_tracking.jobs._base import normalize_interface_name
 from nautobot_netdb_tracking.jobs._base import normalize_interface_name
 ```
 
-### Exception handling : jamais de bare `except Exception`
+### Exception Handling: Never Use Bare `except Exception`
 
-Ne jamais avaler silencieusement les exceptions. Toujours logger avant de `continue` ou `pass` :
+Never silently swallow exceptions. Always log before `continue` or `pass`:
 
 ```python
-# MAUVAIS — exception avalee silencieusement
+# BAD — exception silently swallowed
 try:
     mac_sub = task.run(task=collect_mac_table_task)
 except Exception:
-    pass  # On ne saura jamais pourquoi ca a echoue
+    pass  # We will never know why it failed
 
-# BON — log l'erreur, puis continue
+# GOOD — log the error, then continue
 try:
     mac_sub = task.run(task=collect_mac_table_task)
 except Exception:
     host.logger.warning("MAC collection subtask failed", exc_info=True)
 ```
 
-### % formatting : utiliser f-strings ou .format()
+### % Formatting: Use f-strings or .format()
 
-Ruff UP031 signale l'utilisation de `%` pour le formatage de strings (hors `logger.*`). Utiliser des f-strings :
+Ruff UP031 flags the use of `%` for string formatting (outside `logger.*`). Use f-strings:
 
 ```python
-# MAUVAIS — UP031
+# BAD — UP031
 summary = "Job completed in %.1fs. Devices: %d success" % (elapsed, count)
 
-# BON
+# GOOD
 summary = f"Job completed in {elapsed:.1f}s. Devices: {count} success"
 ```
 
-**Exception** : les appels `logger.info("...", arg1, arg2)` doivent garder le lazy formatting `%s`/`%d` (c'est le pattern standard Python logging qui evite le formatage si le log level est desactive).
+**Exception**: `logger.info("...", arg1, arg2)` calls should keep lazy formatting with `%s`/`%d` (this is the standard Python logging pattern that avoids formatting if the log level is disabled).
 
 ---
 
-## Configuration et packaging
+## Configuration and Packaging
 
-### Dependances mortes dans pyproject.toml
+### Dead Dependencies in pyproject.toml
 
-Supprimer toute dependance qui n'est plus importee dans le code. Les dependances inutiles :
+Remove any dependency that is no longer imported in the code. Unnecessary dependencies:
 
-- Augmentent le temps d'installation
-- Creent des faux positifs dans les audits de securite (CVE sur un package non utilise)
-- Confusent les contributeurs sur la stack technique
+- Increase installation time
+- Create false positives in security audits (CVE on an unused package)
+- Confuse contributors about the tech stack
 
-Verifier avec :
+Verify with:
 
 ```bash
-# Lister toutes les dependances declarees
+# List all declared dependencies
 grep -E '^\w+ = ' pyproject.toml | awk -F' ' '{print $1}'
 
-# Verifier si chaque package est importe quelque part
+# Check if each package is imported somewhere
 rg 'import tenacity|from tenacity' nautobot_netdb_tracking/
 rg 'import macaddress|from macaddress' nautobot_netdb_tracking/
 ```
 
-### Black + Ruff : un seul formateur
+### Black + Ruff: Use a Single Formatter
 
-Configurer Black **et** Ruff comme formateurs cree des conflits potentiels et de la confusion. Choisir un seul outil. Ruff est le standard actuel (plus rapide, inclut le formatage + linting) :
+Configuring both Black **and** Ruff as formatters creates potential conflicts and confusion. Choose one tool. Ruff is the current standard (faster, includes formatting + linting):
 
 ```toml
-# MAUVAIS — deux formateurs configures dans pyproject.toml
+# BAD — two formatters configured in pyproject.toml
 [tool.black]
 line-length = 120
 
 [tool.ruff]
 line-length = 120
 
-# BON — ruff uniquement
+# GOOD — ruff only
 [tool.ruff]
 line-length = 120
 ```
 
-Si Black est conserve pour compatibilite, s'assurer que les deux configs sont strictement identiques (`line-length`, `target-version`).
+If Black is kept for compatibility, ensure both configs are strictly identical (`line-length`, `target-version`).
 
-### URLs dans pyproject.toml
+### URLs in pyproject.toml
 
-Les `homepage`, `repository`, et `documentation` dans pyproject.toml doivent pointer vers des URLs qui existent. Des URLs invalides cassent les liens sur PyPI et confusent les utilisateurs :
+The `homepage`, `repository`, and `documentation` fields in pyproject.toml must point to URLs that actually exist. Invalid URLs break links on PyPI and confuse users:
 
 ```toml
-# MAUVAIS — URLs qui n'existent pas
+# BAD — URLs that do not exist
 homepage = "https://github.com/networktocode/nautobot-netdb-tracking"
 documentation = "https://docs.nautobot.com/projects/netdb-tracking/"
 
-# BON — URLs reelles ou les omettre
+# GOOD — real URLs or omit them
 homepage = "https://github.com/tcheval/nautobot-netdb-tracking"
 repository = "https://github.com/tcheval/nautobot-netdb-tracking"
 ```
 
-### CI : ne jamais commenter le job de test
+### CI: Never Comment Out the Test Job
 
-Le job de test dans `.github/workflows/ci.yml` ne doit **jamais** etre commente. Un CI sans tests est un faux sentiment de securite. Si les tests echouent, les corriger — ne pas desactiver le job.
+The test job in `.github/workflows/ci.yml` must **never** be commented out. A CI without tests is a false sense of security. If tests fail, fix them — do not disable the job.
 
 ---
 
-## FakeNOS et tests d'integration
+## FakeNOS and Integration Tests
 
-### Limitation critique
+### Critical Limitation
 
-Les NAPALM getters "reussissent" sur FakeNOS mais retournent des **donnees incoherentes** (mauvais MACs, mauvaises interfaces, VLAN 666). Le fallback Netmiko/TextFSM ne se declenche jamais car NAPALM ne raise pas d'exception.
+NAPALM getters "succeed" on FakeNOS but return **inconsistent data** (wrong MACs, wrong interfaces, VLAN 666). The Netmiko/TextFSM fallback never triggers because NAPALM does not raise an exception.
 
-### Regle absolue
+### Absolute Rule
 
-**JAMAIS** modifier le code de production pour contourner les limites de FakeNOS. Corriger l'infra de test a la place :
+**NEVER** modify production code to work around FakeNOS limitations. Fix the test infrastructure instead:
 
-- Configurer les reponses FakeNOS pour retourner des donnees realistes
-- Mocker les getters NAPALM dans les tests unitaires
-- Reserver FakeNOS aux tests de connectivite, pas de parsing
+- Configure FakeNOS responses to return realistic data
+- Mock NAPALM getters in unit tests
+- Reserve FakeNOS for connectivity tests, not parsing tests
 
-### TextFSM : destination_port est une liste
+### TextFSM: destination_port Is a List
 
-Le champ `destination_port` du template TextFSM Cisco IOS MAC table retourne une **liste** (`['Gi1/0/1']`), pas un string. Le code gere ca correctement :
+The `destination_port` field in the Cisco IOS MAC table TextFSM template returns a **list** (`['Gi1/0/1']`), not a string. The code handles this correctly:
 
 ```python
 interface = entry.get("destination_port") or entry.get("interface") or ""
@@ -1151,39 +1150,39 @@ if isinstance(interface, list):
     interface = interface[0] if interface else ""
 ```
 
-### FakeNOS et get_interfaces
+### FakeNOS and get_interfaces
 
-`get_interfaces` fonctionne sur FakeNOS (retourne des donnees), contrairement aux autres getters MAC/ARP. Mais les noms d'interfaces retournes peuvent ne pas correspondre a ceux dans Nautobot (ex: paris-rtr — 16 interfaces collectees, 0 matchees).
+`get_interfaces` works on FakeNOS (returns data), unlike the other MAC/ARP getters. But the returned interface names may not match those in Nautobot (e.g., paris-rtr -- 16 interfaces collected, 0 matched).
 
 ---
 
-## Nautobot Status - Pieges semantiques
+## Nautobot Status - Semantic Pitfalls
 
-### Ne jamais utiliser un status semantiquement incorrect comme fallback
+### Never Use a Semantically Incorrect Status as Fallback
 
-Les statuts par defaut pour `dcim.interface` sont : **Active, Decommissioning, Failed, Maintenance, Planned**. Aucun ne correspond a "interface operationnellement down".
+The default statuses for `dcim.interface` are: **Active, Decommissioning, Failed, Maintenance, Planned**. None of them corresponds to "interface operationally down".
 
 ```python
-# ❌ DON'T — "Planned" signifie "pas encore deploye", pas "oper-down"
+# DON'T — "Planned" means "not yet deployed", not "oper-down"
 status_inactive = interface_statuses.filter(name="Planned").first()
 status_inactive_obj = interface_statuses.filter(name="Inactive").first()
 if status_inactive_obj:
     status_inactive = status_inactive_obj
-# Si "Inactive" n'existe pas → fallback sur "Planned" → BUG
+# If "Inactive" does not exist → fallback to "Planned" → BUG
 
-# ✅ DO — si le status n'existe pas, ne pas changer
+# DO — if the status does not exist, do not change it
 status_down = interface_statuses.filter(name="Down").first()
-# status_down peut etre None → la condition short-circuite → pas de changement
+# status_down can be None → the condition short-circuits → no change
 if not is_up and status_down and nb_interface.status == status_active:
     nb_interface.status = status_down
 ```
 
-### Le status "Down" existe mais pas pour les interfaces
+### The "Down" Status Exists but Not for Interfaces
 
-Le status "Down" est pre-installe dans Nautobot mais uniquement pour `ipam.vrf` et `vpn.vpntunnel`. Pour l'utiliser sur les interfaces :
+The "Down" status is pre-installed in Nautobot but only for `ipam.vrf` and `vpn.vpntunnel`. To use it on interfaces:
 
 ```bash
-# Ajouter dcim.interface au content type du status "Down"
+# Add dcim.interface to the "Down" status content types
 curl -X PATCH -H 'Authorization: Token ...' -H 'Content-Type: application/json' \
   -d '{"content_types":["ipam.vrf","vpn.vpntunnel","dcim.interface"]}' \
   'http://localhost:8080/api/extras/statuses/<down-status-uuid>/'
@@ -1191,19 +1190,19 @@ curl -X PATCH -H 'Authorization: Token ...' -H 'Content-Type: application/json' 
 
 ---
 
-## Docker - Deploiement a chaud du plugin
+## Docker - Hot Deployment of the Plugin
 
-### Sequence correcte (CRITIQUE)
+### Correct Sequence (CRITICAL)
 
-`pip install --upgrade` est un **no-op** si la version n'a pas change. Le worker Celery garde l'ancien code en memoire meme apres `pip install`.
+`pip install --upgrade` is a **no-op** if the version has not changed. The Celery worker keeps the old code in memory even after `pip install`.
 
 ```bash
-# ❌ DON'T — ne reinstalle pas si meme version, ancien /tmp/ stale
+# DON'T — does not reinstall if same version, old /tmp/ is stale
 docker cp ./plugin container:/tmp/plugin
 docker exec container pip install --upgrade /tmp/plugin
 docker restart container
 
-# ✅ DO — rm, cp fresh, force-reinstall, restart, verify
+# DO — rm, cp fresh, force-reinstall, restart, verify
 for c in nautobot nautobot-worker nautobot-scheduler; do
   docker exec $c rm -rf /tmp/nautobot_netdb_tracking
   docker cp ./nautobot_netdb_tracking $c:/tmp/nautobot_netdb_tracking
@@ -1211,73 +1210,73 @@ for c in nautobot nautobot-worker nautobot-scheduler; do
 done
 docker restart nautobot nautobot-worker nautobot-scheduler
 
-# Verifier que le code installe est le bon
+# Verify that the installed code is correct
 docker exec nautobot-worker grep "status_down" \
   /usr/local/lib/python3.12/site-packages/nautobot_netdb_tracking/jobs/collect_mac_arp.py
 ```
 
-### Pourquoi `--force-reinstall --no-deps`
+### Why `--force-reinstall --no-deps`
 
-- `--force-reinstall` : force pip a reinstaller meme si la version est identique
-- `--no-deps` : evite de reinstaller toutes les dependances (beaucoup plus rapide)
-- Sans ces flags, pip compare le numero de version et skip l'installation
+- `--force-reinstall`: forces pip to reinstall even if the version is identical
+- `--no-deps`: avoids reinstalling all dependencies (much faster)
+- Without these flags, pip compares the version number and skips the installation
 
 ---
 
-## Checklist pre-commit
+## Pre-commit Checklist
 
-### Linting et formatage
+### Linting and Formatting
 
-1. `ruff check` — zero nouvelle erreur
-2. `ruff format --check` — zero nouveau fichier a reformater
+1. `ruff check` — zero new errors
+2. `ruff format --check` — zero new files to reformat
 
-### Modeles et ORM
+### Models and ORM
 
-3. Pas de `.save()` — toujours `validated_save()`
-4. Pas de query dans une boucle — `select_related` / `prefetch_related`
-5. Tout `Cable()` a un `status=` (recupere via `Status.objects.get_for_model(Cable)`)
-6. Les `UniqueConstraint` utilisent le prefixe `%(app_label)s_%(class)s_`
-7. Pas de `count()` + `delete()` separes — utiliser la valeur de retour de `delete()`
+1. No `.save()` — always `validated_save()`
+2. No query inside a loop — `select_related` / `prefetch_related`
+3. Every `Cable()` has a `status=` (retrieved via `Status.objects.get_for_model(Cable)`)
+4. `UniqueConstraint` names use the `%(app_label)s_%(class)s_` prefix
+5. No separate `count()` + `delete()` — use the return value of `delete()`
 
-### Vues et API
+### Views and API
 
-8. Les vues custom (`View`) ont `LoginRequiredMixin` + `PermissionRequiredMixin`
-9. Chaque `permission_required` correspond au modele affiche (pas une permission generique)
-10. Les ViewSets API ont tous les FK du serializer dans `select_related()`
-11. Pas de serializer/code mort — supprimer tout ce qui n'est pas importe
+1. Custom views (`View`) have `LoginRequiredMixin` + `PermissionRequiredMixin`
+2. Each `permission_required` corresponds to the displayed model (not a generic permission)
+3. API ViewSets have all serializer FK fields in `select_related()`
+4. No dead serializer/code — remove anything that is not imported
 
-### Jobs et signals
+### Jobs and Signals
 
-12. `post_migrate.connect()` a un `sender=` pour eviter les executions multiples
-13. Pas de dependance inutile dans `pyproject.toml` — verifier les imports
+1. `post_migrate.connect()` has a `sender=` to prevent multiple executions
+2. No unnecessary dependency in `pyproject.toml` — verify imports
 
 ### Tests
 
-14. Les fixtures utilisent `validated_save()`, pas `.create()` ni `.save()`
-15. Les tests FK filters utilisent des listes : `[str(device.pk)]`
-16. Pas de `.configure(request)` sur les tables
-17. Le job de test CI n'est PAS commente
+1. Fixtures use `validated_save()`, not `.create()` or `.save()`
+2. FK filter tests use lists: `[str(device.pk)]`
+3. No `.configure(request)` on tables
+4. The CI test job is NOT commented out
 
 ### Nornir
 
-18. `NornirSubTaskError.result` est un `MultiResult` (liste) — iterer pour extraire la root cause
-19. Ne pas raise `RuntimeError` sur echec partiel — uniquement si `devices_success == 0`
+1. `NornirSubTaskError.result` is a `MultiResult` (list) — iterate to extract the root cause
+2. Do not raise `RuntimeError` on partial failure — only if `devices_success == 0`
 
 ### Python
 
-20. Une seule fonction de normalisation par concept (DRY) — source de verite dans `models.py`
-21. Pas d'imports circulaires entre modules jobs — partager via `_base.py` ou `utils.py`
-22. Pas de bare `except Exception: pass` — toujours logger avant de continuer
-23. Pas de `%` formatting dans les strings (hors `logger.*`) — utiliser f-strings
+1. One normalization function per concept (DRY) — source of truth in `models.py`
+2. No circular imports between job modules — share via `_base.py` or `utils.py`
+3. No bare `except Exception: pass` — always log before continuing
+4. No `%` formatting in strings (outside `logger.*`) — use f-strings
 
-### Status et transitions
+### Status and Transitions
 
-24. Ne jamais utiliser un status semantiquement incorrect comme fallback (ex: "Planned" pour oper-down)
-25. Si un status cible n'existe pas, **skip la transition** (`None` → condition short-circuite)
-26. Verifier que le status existe pour le bon content type (`dcim.interface`, pas juste `ipam.vrf`)
+1. Never use a semantically incorrect status as fallback (e.g., "Planned" for oper-down)
+2. If a target status does not exist, **skip the transition** (`None` causes the condition to short-circuit)
+3. Verify that the status exists for the correct content type (`dcim.interface`, not just `ipam.vrf`)
 
-### Deploiement Docker
+### Docker Deployment
 
-27. `pip install --upgrade` ne reinstalle pas si meme version — utiliser `--force-reinstall --no-deps`
-28. Toujours `rm -rf /tmp/old` avant `docker cp` fresh — l'ancien `/tmp/` est stale
-29. Toujours verifier le code installe avec `grep` apres deploy — le worker peut garder l'ancien code en memoire
+1. `pip install --upgrade` does not reinstall if same version — use `--force-reinstall --no-deps`
+2. Always `rm -rf /tmp/old` before `docker cp` fresh — the old `/tmp/` is stale
+3. Always verify the installed code with `grep` after deploy — the worker may keep the old code in memory

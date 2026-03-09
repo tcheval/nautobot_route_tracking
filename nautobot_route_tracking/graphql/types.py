@@ -1,3 +1,5 @@
+"""GraphQL type definitions for Route Tracking plugin."""
+
 from nautobot.core.graphql.types import OptimizedNautobotObjectType
 
 from nautobot_route_tracking import filters, models

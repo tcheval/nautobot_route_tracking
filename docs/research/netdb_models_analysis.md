@@ -1,26 +1,26 @@
-# Analyse des modèles — nautobot_netdb_tracking
+# Models Analysis -- nautobot_netdb_tracking
 
-**Fichier source analysé** : `nautobot_netdb_tracking/nautobot_netdb_tracking/models.py`
-**Migrations analysées** : `0001_initial.py`, `0002_rename_constraints.py`, `0003_add_first_seen_indexes.py`
-**Date d'analyse** : 2026-02-18
-
----
-
-## 1. Vue d'ensemble
-
-Le plugin expose **3 modèles principaux**, tous héritant de `PrimaryModel` (classe Nautobot) :
-
-| Modèle | Table DB (déduite) | Rôle |
-| ------ | ------------------ | ---- |
-| `MACAddressHistory` | `nautobot_netdb_tracking_macaddresshistory` | Historique des adresses MAC vues sur les interfaces |
-| `ARPEntry` | `nautobot_netdb_tracking_arpentry` | Entrées ARP collectées sur les devices |
-| `TopologyConnection` | `nautobot_netdb_tracking_topologyconnection` | Connexions CDP/LLDP découvertes entre devices |
-
-Un **helper module-level** est également défini : `normalize_mac_address()`.
+**Source file analyzed**: `nautobot_netdb_tracking/nautobot_netdb_tracking/models.py`
+**Migrations analyzed**: `0001_initial.py`, `0002_rename_constraints.py`, `0003_add_first_seen_indexes.py`
+**Analysis date**: 2026-02-18
 
 ---
 
-## 2. Imports du fichier models.py
+## 1. Overview
+
+The plugin exposes **3 main models**, all inheriting from `PrimaryModel` (Nautobot class):
+
+| Model | DB Table (inferred) | Role |
+| ----- | ------------------- | ---- |
+| `MACAddressHistory` | `nautobot_netdb_tracking_macaddresshistory` | History of MAC addresses seen on interfaces |
+| `ARPEntry` | `nautobot_netdb_tracking_arpentry` | ARP entries collected from devices |
+| `TopologyConnection` | `nautobot_netdb_tracking_topologyconnection` | CDP/LLDP connections discovered between devices |
+
+A **module-level helper** is also defined: `normalize_mac_address()`.
+
+---
+
+## 2. Imports in models.py
 
 ```python
 from django.core.exceptions import ValidationError
@@ -32,15 +32,16 @@ from nautobot.extras.models import Status
 from nautobot.ipam.models import VLAN, IPAddress, Prefix
 ```
 
-Points notables :
-- `PrimaryModel` vient de `nautobot.apps.models` (pas de `nautobot.core.models`)
-- `transaction` est importé pour les `transaction.atomic()` dans les méthodes `update_or_create_entry`
-- `timezone` est utilisé pour `timezone.now()` dans `clean()` et `update_or_create_entry()`
-- Tous les FK pointent vers des modèles Nautobot core : `Device`, `Interface`, `Cable`, `VLAN`, `IPAddress`, `Prefix`, `Status`
+Notable points:
+
+- `PrimaryModel` comes from `nautobot.apps.models` (not `nautobot.core.models`)
+- `transaction` is imported for `transaction.atomic()` in `update_or_create_entry` methods
+- `timezone` is used for `timezone.now()` in `clean()` and `update_or_create_entry()`
+- All FKs point to Nautobot core models: `Device`, `Interface`, `Cable`, `VLAN`, `IPAddress`, `Prefix`, `Status`
 
 ---
 
-## 3. Fonction helper : `normalize_mac_address()`
+## 3. Helper function: `normalize_mac_address()`
 
 ```python
 def normalize_mac_address(mac: str) -> str:
@@ -52,38 +53,39 @@ def normalize_mac_address(mac: str) -> str:
     return ":".join(clean_mac[i : i + 2] for i in range(0, 12, 2))
 ```
 
-- Accepte `:`, `-`, `.` ou sans séparateur ; convertit en MAJUSCULES
-- Produit le format `XX:XX:XX:XX:XX:XX` (17 caractères)
-- Lève `ValidationError` si vide ou format invalide (longueur != 12 ou caractères hors hex)
+- Accepts `:`, `-`, `.` or no separator; converts to UPPERCASE
+- Produces the format `XX:XX:XX:XX:XX:XX` (17 characters)
+- Raises `ValidationError` if empty or invalid format (length != 12 or non-hex characters)
 
 ---
 
-## 4. Modèle : `MACAddressHistory`
+## 4. Model: `MACAddressHistory`
 
-### 4.1 Héritage
+### 4.1 Inheritance
 
 ```python
 class MACAddressHistory(PrimaryModel):
 ```
 
-`PrimaryModel` fournit automatiquement (confirmé via `0001_initial.py`) :
-- `id` : `UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False, unique=True)`
-- `created` : `DateTimeField(auto_now_add=True, null=True)`
-- `last_updated` : `DateTimeField(auto_now=True, null=True)`
-- `_custom_field_data` : `JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)`
-- `tags` : `TagsField(through='extras.TaggedItem', to='extras.Tag')`
-- Mixins : `DataComplianceModelMixin`, `DynamicGroupMixin`, `NotesMixin`
+`PrimaryModel` automatically provides (confirmed via `0001_initial.py`):
 
-### 4.2 Champs
+- `id`: `UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False, unique=True)`
+- `created`: `DateTimeField(auto_now_add=True, null=True)`
+- `last_updated`: `DateTimeField(auto_now=True, null=True)`
+- `_custom_field_data`: `JSONField(blank=True, default=dict, encoder=DjangoJSONEncoder)`
+- `tags`: `TagsField(through='extras.TaggedItem', to='extras.Tag')`
+- Mixins: `DataComplianceModelMixin`, `DynamicGroupMixin`, `NotesMixin`
 
-| Champ | Type Django exact | Options | Notes |
+### 4.2 Fields
+
+| Field | Exact Django Type | Options | Notes |
 | ----- | ----------------- | ------- | ----- |
-| `device` | `ForeignKey(to=Device, ...)` | `on_delete=CASCADE`, `related_name="mac_address_history"` | Obligatoire |
-| `interface` | `ForeignKey(to=Interface, ...)` | `on_delete=CASCADE`, `related_name="mac_address_history"` | Obligatoire |
-| `mac_address` | `CharField(max_length=17)` | — | Format `XX:XX:XX:XX:XX:XX` |
-| `vlan` | `ForeignKey(to=VLAN, ...)` | `on_delete=SET_NULL`, `related_name="mac_address_history"`, `null=True`, `blank=True` | Optionnel |
-| `first_seen` | `DateTimeField(auto_now_add=True)` | — | Géré automatiquement à la création |
-| `last_seen` | `DateTimeField()` | — | Pas de `auto_now`, pas de `default` — fourni manuellement |
+| `device` | `ForeignKey(to=Device, ...)` | `on_delete=CASCADE`, `related_name="mac_address_history"` | Required |
+| `interface` | `ForeignKey(to=Interface, ...)` | `on_delete=CASCADE`, `related_name="mac_address_history"` | Required |
+| `mac_address` | `CharField(max_length=17)` | -- | Format `XX:XX:XX:XX:XX:XX` |
+| `vlan` | `ForeignKey(to=VLAN, ...)` | `on_delete=SET_NULL`, `related_name="mac_address_history"`, `null=True`, `blank=True` | Optional |
+| `first_seen` | `DateTimeField(auto_now_add=True)` | -- | Automatically managed at creation |
+| `last_seen` | `DateTimeField()` | -- | No `auto_now`, no `default` -- provided manually |
 
 ### 4.3 `natural_key_field_lookups`
 
@@ -91,7 +93,7 @@ class MACAddressHistory(PrimaryModel):
 natural_key_field_lookups = ["device__name", "interface__name", "mac_address"]
 ```
 
-### 4.4 Meta class exacte
+### 4.4 Exact Meta class
 
 ```python
 class Meta:
@@ -113,10 +115,10 @@ class Meta:
     ]
 ```
 
-- `verbose_name_plural` identique à `verbose_name` (intentionnel)
-- `UniqueConstraint` sur 4 champs — `vlan=NULL` traité comme une valeur distincte par PostgreSQL
-- Nom de contrainte : `<app_label>_<model_lower>_<description>` (renommé en migration `0002`)
-- 5 index totaux — l'index sur `first_seen` ajouté en migration `0003`
+- `verbose_name_plural` identical to `verbose_name` (intentional)
+- `UniqueConstraint` on 4 fields -- `vlan=NULL` treated as a distinct value by PostgreSQL
+- Constraint name: `<app_label>_<model_lower>_<description>` (renamed in migration `0002`)
+- 5 indexes total -- the index on `first_seen` added in migration `0003`
 
 ### 4.5 `__str__()`
 
@@ -126,7 +128,7 @@ def __str__(self) -> str:
     return f"{self.mac_address} on {self.device.name}:{self.interface.name}{vlan_str}"
 ```
 
-### 4.6 `clean()` exact
+### 4.6 Exact `clean()`
 
 ```python
 def clean(self) -> None:
@@ -143,7 +145,7 @@ def clean(self) -> None:
         self.last_seen = timezone.now()
 ```
 
-### 4.7 `update_or_create_entry()` — Pattern NetDB CRITIQUE
+### 4.7 `update_or_create_entry()` -- CRITICAL NetDB Pattern
 
 ```python
 @classmethod
@@ -182,21 +184,21 @@ def update_or_create_entry(
 
 ---
 
-## 5. Modèle : `ARPEntry`
+## 5. Model: `ARPEntry`
 
-### 5.1 Champs
+### 5.1 Fields
 
-| Champ | Type Django exact | Options | Notes |
+| Field | Exact Django Type | Options | Notes |
 | ----- | ----------------- | ------- | ----- |
-| `device` | `ForeignKey(to=Device, ...)` | `on_delete=CASCADE`, `related_name="arp_entries"` | Obligatoire |
-| `interface` | `ForeignKey(to=Interface, ...)` | `on_delete=SET_NULL`, `related_name="arp_entries"`, `null=True`, `blank=True` | Optionnel |
-| `ip_address` | `GenericIPAddressField(protocol="both")` | — | Accepte IPv4 et IPv6 |
-| `ip_address_object` | `ForeignKey(to="ipam.IPAddress", ...)` | `on_delete=SET_NULL`, `related_name="arp_entries"`, `null=True`, `blank=True` | Auto-résolu vers IPAM |
-| `mac_address` | `CharField(max_length=17)` | — | Format `XX:XX:XX:XX:XX:XX` |
-| `first_seen` | `DateTimeField(auto_now_add=True)` | — | Géré automatiquement |
-| `last_seen` | `DateTimeField()` | — | Fourni manuellement |
+| `device` | `ForeignKey(to=Device, ...)` | `on_delete=CASCADE`, `related_name="arp_entries"` | Required |
+| `interface` | `ForeignKey(to=Interface, ...)` | `on_delete=SET_NULL`, `related_name="arp_entries"`, `null=True`, `blank=True` | Optional |
+| `ip_address` | `GenericIPAddressField(protocol="both")` | -- | Accepts IPv4 and IPv6 |
+| `ip_address_object` | `ForeignKey(to="ipam.IPAddress", ...)` | `on_delete=SET_NULL`, `related_name="arp_entries"`, `null=True`, `blank=True` | Auto-resolved to IPAM |
+| `mac_address` | `CharField(max_length=17)` | -- | Format `XX:XX:XX:XX:XX:XX` |
+| `first_seen` | `DateTimeField(auto_now_add=True)` | -- | Automatically managed |
+| `last_seen` | `DateTimeField()` | -- | Provided manually |
 
-### 5.2 Meta class exacte
+### 5.2 Exact Meta class
 
 ```python
 class Meta:
@@ -249,12 +251,12 @@ def resolve_ip_address_object(ip_str: str) -> IPAddress | None:
     return new_ip
 ```
 
-- Utilise `host=ip_str` (API Nautobot 3.x, pas `address=`)
-- `parent=prefix` (Nautobot 3.x, pas `namespace=`)
+- Uses `host=ip_str` (Nautobot 3.x API, not `address=`)
+- `parent=prefix` (Nautobot 3.x, not `namespace=`)
 
 ---
 
-## 6. Modèle : `TopologyConnection`
+## 6. Model: `TopologyConnection`
 
 ### 6.1 Inner class `Protocol` (TextChoices)
 
@@ -264,20 +266,20 @@ class Protocol(models.TextChoices):
     LLDP = "LLDP", "LLDP"
 ```
 
-### 6.2 Champs
+### 6.2 Fields
 
-| Champ | Type Django exact | Options | Notes |
+| Field | Exact Django Type | Options | Notes |
 | ----- | ----------------- | ------- | ----- |
-| `local_device` | `ForeignKey(to=Device, ...)` | `on_delete=CASCADE`, `related_name="topology_connections_local"` | Obligatoire |
-| `local_interface` | `ForeignKey(to=Interface, ...)` | `on_delete=CASCADE`, `related_name="topology_connections_local"` | Obligatoire |
-| `remote_device` | `ForeignKey(to=Device, ...)` | `on_delete=CASCADE`, `related_name="topology_connections_remote"` | Obligatoire |
-| `remote_interface` | `ForeignKey(to=Interface, ...)` | `on_delete=CASCADE`, `related_name="topology_connections_remote"` | Obligatoire |
-| `protocol` | `CharField(max_length=10, choices=Protocol.choices)` | — | `"CDP"` ou `"LLDP"` |
-| `cable` | `ForeignKey(to=Cable, ...)` | `on_delete=SET_NULL`, `related_name="topology_connections"`, `null=True`, `blank=True` | Optionnel |
-| `first_seen` | `DateTimeField(auto_now_add=True)` | — | Géré automatiquement |
-| `last_seen` | `DateTimeField()` | — | Fourni manuellement |
+| `local_device` | `ForeignKey(to=Device, ...)` | `on_delete=CASCADE`, `related_name="topology_connections_local"` | Required |
+| `local_interface` | `ForeignKey(to=Interface, ...)` | `on_delete=CASCADE`, `related_name="topology_connections_local"` | Required |
+| `remote_device` | `ForeignKey(to=Device, ...)` | `on_delete=CASCADE`, `related_name="topology_connections_remote"` | Required |
+| `remote_interface` | `ForeignKey(to=Interface, ...)` | `on_delete=CASCADE`, `related_name="topology_connections_remote"` | Required |
+| `protocol` | `CharField(max_length=10, choices=Protocol.choices)` | -- | `"CDP"` or `"LLDP"` |
+| `cable` | `ForeignKey(to=Cable, ...)` | `on_delete=SET_NULL`, `related_name="topology_connections"`, `null=True`, `blank=True` | Optional |
+| `first_seen` | `DateTimeField(auto_now_add=True)` | -- | Automatically managed |
+| `last_seen` | `DateTimeField()` | -- | Provided manually |
 
-### 6.3 Meta class exacte
+### 6.3 Exact Meta class
 
 ```python
 class Meta:
@@ -309,7 +311,7 @@ def __str__(self) -> str:
     )
 ```
 
-### 6.5 `clean()` exact
+### 6.5 Exact `clean()`
 
 ```python
 def clean(self) -> None:
@@ -332,39 +334,39 @@ def clean(self) -> None:
 
 ---
 
-## 7. Pattern `first_seen` / `last_seen`
+## 7. `first_seen` / `last_seen` Pattern
 
-| Champ | Configuration Django | Gestion |
-| ----- | -------------------- | ------- |
-| `first_seen` | `DateTimeField(auto_now_add=True)` | Django le remplit automatiquement, non modifiable |
-| `last_seen` | `DateTimeField()` | Pas de `auto_now`, pas de `default` — géré manuellement |
+| Field | Django Configuration | Management |
+| ----- | -------------------- | ---------- |
+| `first_seen` | `DateTimeField(auto_now_add=True)` | Django fills it automatically, not editable |
+| `last_seen` | `DateTimeField()` | No `auto_now`, no `default` -- managed manually |
 
-### Algorithme NetDB UPDATE vs INSERT
+### NetDB UPDATE vs INSERT Algorithm
 
-```
-Pour chaque donnée collectée sur un device :
-  1. Normaliser la donnée clé (MAC, IP, etc.)
-  2. Chercher un enregistrement existant avec la même combinaison de clés métier
-  3. Si trouvé → UPDATE last_seen = now() (+ champs annexes si changés)
-  4. Si non trouvé → INSERT nouvelle ligne (first_seen = auto, last_seen = now())
+```text
+For each piece of data collected from a device:
+  1. Normalize the key data (MAC, IP, etc.)
+  2. Look for an existing record with the same business key combination
+  3. If found -> UPDATE last_seen = now() (+ ancillary fields if changed)
+  4. If not found -> INSERT new row (first_seen = auto, last_seen = now())
 
-Résultat :
-  - Une donnée stable pendant 90 jours → 1 seul enregistrement
-    (first_seen = date initiale, last_seen = date du dernier scan)
-  - Une donnée qui change → nouvel enregistrement avec first_seen = date du changement
+Result:
+  - Stable data over 90 days -> 1 single record
+    (first_seen = initial date, last_seen = date of last scan)
+  - Data that changes -> new record with first_seen = date of the change
 ```
 
 ---
 
-## 8. Règles critiques pour recréer un modèle similaire
+## 8. Critical Rules for Recreating a Similar Model
 
-1. Toujours appeler `super().clean()` en premier dans `clean()`
-2. Toujours utiliser `validated_save()` — jamais `.save()` direct
-3. Envelopper les opérations DB dans `transaction.atomic()`
-4. Comparer les FK par `_id` (ex. `self.interface.device_id != self.device_id`) pour éviter les requêtes supplémentaires
-5. `last_seen` sans `auto_now` ni `default` → géré manuellement dans `update_or_create_entry()`, initialisé dans `clean()` comme fallback
-6. `first_seen` avec `auto_now_add=True` → géré par Django, ne pas tenter de le modifier
-7. `related_name` explicite sur tous les FK — obligatoire quand deux FK pointent vers le même modèle
-8. Noms de contraintes : convention `<app_label>_<model_class_lower>_<description>` — à respecter dès la migration initiale
-9. `natural_key_field_lookups` requis par Nautobot pour les imports/exports naturels
-10. `PrimaryModel` vient de `nautobot.apps.models` (pas `nautobot.core.models`)
+1. Always call `super().clean()` first in `clean()`
+2. Always use `validated_save()` -- never direct `.save()`
+3. Wrap DB operations in `transaction.atomic()`
+4. Compare FKs by `_id` (e.g. `self.interface.device_id != self.device_id`) to avoid extra queries
+5. `last_seen` without `auto_now` or `default` -> managed manually in `update_or_create_entry()`, initialized in `clean()` as fallback
+6. `first_seen` with `auto_now_add=True` -> managed by Django, do not attempt to modify it
+7. Explicit `related_name` on all FKs -- required when two FKs point to the same model
+8. Constraint names: convention `<app_label>_<model_class_lower>_<description>` -- must be respected from the initial migration
+9. `natural_key_field_lookups` required by Nautobot for natural imports/exports
+10. `PrimaryModel` comes from `nautobot.apps.models` (not `nautobot.core.models`)

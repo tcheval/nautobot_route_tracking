@@ -1,5 +1,81 @@
-# Findings Registry
-# Managed by: scripts/findings.py
-# Format: YAML list of findings
-
-findings: []
+findings:
+- id: F-001
+  severity: CRITICAL
+  category: Docs
+  title: 8 files in French (D-C1 to D-C8)
+  description: Translate to English
+  file: ''
+  status: resolved
+  created: '2026-03-09'
+  resolved: '2026-03-09'
+  reason: Translated all 8 French files to English
+  source_audit: audit_20260309.md
+- id: F-002
+  severity: HIGH
+  category: Code
+  title: '`queryset.extra()` deprecated (C-H2)'
+  description: Migrate to RawSQL/custom Lookup
+  file: ''
+  status: resolved
+  created: '2026-03-09'
+  resolved: '2026-03-09'
+  reason: Replaced queryset.extra() with RawSQL expression in filters.py
+  source_audit: audit_20260309.md
+- id: F-003
+  severity: HIGH
+  category: Code
+  title: Unused import RawSQL (C-H1)
+  description: Remove import
+  file: ''
+  status: resolved
+  created: '2026-03-09'
+  resolved: '2026-03-09'
+  reason: RawSQL import now used by filter_lookup containment query
+  source_audit: audit_20260309.md
+- id: F-004
+  severity: WARNING
+  category: Docs
+  title: 5 references to `get_route_to()` (D-W1 to D-W5)
+  description: Replace with `napalm_cli` references
+  file: ''
+  status: resolved
+  created: '2026-03-09'
+  resolved: '2026-03-09'
+  reason: Replaced all get_route_to() references with napalm_cli in docs
+  source_audit: audit_20260309.md
+- id: F-005
+  severity: WARNING
+  category: Docs
+  title: Outdated specs (D-W7, D-W8)
+  description: Update to match implementation
+  file: ''
+  status: resolved
+  created: '2026-03-09'
+  resolved: '2026-03-09'
+  reason: Fixed during SPECIFICATIONS.md translation (select_for_update, NautobotModelSerializer,
+    retention_days)
+  source_audit: audit_20260309.md
+- id: F-006
+  severity: WARNING
+  category: Docs
+  title: Missing READMEs (D-W9 to D-W13)
+  description: Add structural READMEs
+  file: ''
+  status: resolved
+  created: '2026-03-09'
+  resolved: '2026-03-09'
+  reason: Added README.md to docs/, docs/research/, tests/, scripts/
+  source_audit: audit_20260309.md
+- id: F-007
+  severity: WARNING
+  category: Code
+  title: CDN dependency for chart.js (C-M3)
+  description: Consider vendoring
+  file: ''
+  status: resolved
+  created: '2026-03-09'
+  resolved: '2026-03-09'
+  reason: Vendored chart.js into static/nautobot_route_tracking/js/
+  source_audit: audit_20260309.md
+metadata:
+  last_sync: '2026-03-09'

@@ -132,6 +132,7 @@ nautobot_route_tracking/        # Plugin source code
 ├── graphql/
 │   └── types.py                # RouteEntryType
 └── templates/nautobot_route_tracking/
+    ├── dashboard.html
     ├── device_route_tab.html
     └── inc/
         └── device_route_panel.html

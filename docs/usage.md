@@ -4,7 +4,7 @@ This guide covers how to use the **nautobot-route-tracking** plugin to collect, 
 
 ## Overview
 
-The Route Tracking plugin collects routing table entries from network devices using NAPALM `get_route_to()` and stores them in Nautobot with historical tracking. The core logic follows the NetDB pattern:
+The Route Tracking plugin collects routing table entries from network devices using NAPALM CLI commands (`napalm_cli`) and stores them in Nautobot with historical tracking. The core logic follows the NetDB pattern:
 
 - **UPDATE `last_seen`**: If the exact same route entry (device + VRF + network + next_hop + protocol) is seen again, only the `last_seen` timestamp is updated. No duplicate record is created.
 - **INSERT new record**: If any part of the combination changes (new next-hop, new protocol, route removed then re-added), a new record is created with `first_seen = last_seen = now`.
@@ -13,7 +13,7 @@ This gives you a compact history of actual routing changes rather than redundant
 
 ## Key concept: UPDATE vs INSERT logic
 
-```
+```text
 Device A collected at T1:
   RouteEntry(device=A, network=10.0.0.0/8, next_hop=192.168.1.1, protocol=ospf)
     → first_seen=T1, last_seen=T1
@@ -26,7 +26,7 @@ Device A collected at T3 (next-hop changed to 192.168.1.2):
   → Old record last_seen stays at T2
 ```
 
-A route that disappears from the device stops getting `last_seen` updates. After `route_retention_days` days without update, it becomes a candidate for purge.
+A route that disappears from the device stops getting `last_seen` updates. After `retention_days` days without update, it becomes a candidate for purge.
 
 ---
 
@@ -271,7 +271,7 @@ When multiple next-hops exist for the same prefix (Equal-Cost Multi-Path), each 
 
 Example (BGP ECMP via two peers):
 
-```
+```text
 network: 1.0.0.0/24 | next_hop: 172.17.17.17 | protocol: bgp | is_active: True
 network: 1.0.0.0/24 | next_hop: 172.17.17.18 | protocol: bgp | is_active: True
 ```
@@ -372,7 +372,7 @@ After each collection run, check **Extras > Job Results** for:
 ### Performance issues
 
 1. Reduce `workers` (fewer parallel SSH connections consume less memory).
-2. Increase `timeout` if devices are slow to respond to `get_route_to()`.
+2. Increase `timeout` if devices are slow to respond to CLI commands.
 3. Disable `collect_bgp` if enabled — BGP is the dominant source of slowness.
 4. Scope the job to specific locations or roles instead of running against all devices.
 
@@ -380,5 +380,5 @@ After each collection run, check **Extras > Job Results** for:
 
 - [Nautobot Jobs Documentation](https://docs.nautobot.com/projects/core/en/stable/user-guide/platform-functionality/jobs/)
 - [Nautobot REST API](https://docs.nautobot.com/projects/core/en/stable/user-guide/platform-functionality/rest-api/)
-- [NAPALM `get_route_to()` documentation](https://napalm.readthedocs.io/en/latest/base.html#napalm.base.base.NetworkDriver.get_route_to)
+- [NAPALM documentation](https://napalm.readthedocs.io/en/latest/)
 - [nautobot-plugin-nornir documentation](https://docs.nautobot.com/projects/plugin-nornir/en/latest/)

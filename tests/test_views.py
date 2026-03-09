@@ -81,5 +81,3 @@ class TestDeviceRouteTabView:
         url = self.TAB_URL.format(pk=device2.pk)
         response = authenticated_client.get(url)
         assert response.status_code == 200
-        # Either "No route entries" or an empty table
-        assert response.status_code == 200
