@@ -1,0 +1,5 @@
+# Findings Registry
+# Managed by: scripts/findings.py
+# Format: YAML list of findings
+
+findings: []
