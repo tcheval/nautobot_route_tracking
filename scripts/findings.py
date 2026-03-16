@@ -203,8 +203,6 @@ def cmd_sync(args: argparse.Namespace, root: Path) -> None:
             added += 1
 
     data["findings"] = findings
-    if "metadata" not in data:
-        data["metadata"] = {}
     data["metadata"]["last_sync"] = str(date.today())
     save_registry(root, data)
     print(f"Synced {len(audit_files)} audit files. Added {added} new findings.")

@@ -26,12 +26,28 @@ If no changes, exit with "Nothing to commit."
 ### Step 2: Run Lint (Guard)
 
 ```bash
-python3 -m ruff check nautobot_route_tracking/ tests/
+python3 -m ruff check nautobot_route_tracking/ tests/ scripts/ --output-format concise
 ```
 
 If lint fails, STOP. Display: "Fix lint errors before committing."
 
-### Step 3: Stage Changes
+### Step 2a: Run Format Check (Guard)
+
+```bash
+python3 -m ruff format --check nautobot_route_tracking/ tests/ scripts/
+```
+
+If format check fails, STOP. Display: "Fix formatting before committing. Run: ruff format ."
+
+### Step 3: Run Tests (Guard)
+
+```bash
+python3 -m pytest tests/ scripts/tests/ -q --tb=line
+```
+
+If tests fail, STOP. Display: "Fix failing tests before committing."
+
+### Step 4: Stage Changes
 
 Stage relevant files by name. **Never use `git add -A`** — it risks staging secrets or generated files.
 
@@ -49,7 +65,7 @@ Verify staged files:
 git diff --cached --name-only
 ```
 
-### Step 4: Analyze Changes
+### Step 5: Analyze Changes
 
 Determine commit type based on changed files:
 
@@ -61,7 +77,7 @@ Determine commit type based on changed files:
 | Config/tooling | `chore` |
 | Restructure | `refactor` |
 
-### Step 5: CHANGELOG Guard
+### Step 6: CHANGELOG Guard
 
 If staged files include source code changes (`feat` or `fix`):
 
@@ -75,7 +91,7 @@ If staged files include source code changes (`feat` or `fix`):
 
 Skip for `docs`-only or `chore`-only commits. Skip if no `CHANGELOG.md` exists.
 
-### Step 5b: Badges Sync
+### Step 6b: Badges Sync
 
 If `CHANGELOG.md` was updated with a new version:
 
@@ -83,7 +99,7 @@ If `CHANGELOG.md` was updated with a new version:
 2. Update the version badge to match new version
 3. Stage `README.md`
 
-### Step 6: Generate Commit Message
+### Step 7: Generate Commit Message
 
 ```bash
 git diff --cached --stat
@@ -93,7 +109,7 @@ git diff --cached
 #### Format
 
 ```text
-<type>(<scope>): <summary>
+<type>(<scope>): v<version> — <summary>
 
 - <change 1>
 - <change 2>
@@ -101,18 +117,21 @@ git diff --cached
 Co-Authored-By: Claude <model> <noreply@anthropic.com>
 ```
 
+> **Note:** The `Co-Authored-By` trailer uses the current model name (e.g., `Claude Opus 4.6`). Update the model name if the active model changes.
+
 **Rules:**
 
 - Header: max 72 chars, imperative mood, lowercase after colon
+- **Include version in header** when CHANGELOG was updated (e.g., `feat(jobs): v1.3.0 — add purge old routes command`)
 - Body: one bullet per logical change
 - Trailer: always include Co-Authored-By
 - Blank line between header, body, and trailer
 
-### Step 7: Commit
+### Step 8: Commit
 
 ```bash
 git commit -m "$(cat <<'EOF'
-<type>(<scope>): <summary>
+<type>(<scope>): v<version> — <summary>
 
 - <change 1>
 - <change 2>
@@ -122,9 +141,9 @@ EOF
 )"
 ```
 
-### Step 7b: Smart Tagging
+### Step 8b: Smart Tagging
 
-If staged files include source directories (`nautobot_route_tracking/`, `tests/`):
+If staged files include source directories (`nautobot_route_tracking/`, `scripts/`, `tests/`, `_convention/`):
 
 1. Extract new version from CHANGELOG.md
 2. Create tag:
@@ -139,9 +158,64 @@ Otherwise (docs-only or chore-only with no source files):
 No tag (no source files changed)
 ```
 
-### Step 7c: GitHub Release with diff artifact
+### Step 8c: Full Release Workflow
 
-Only if `release` argument is present **AND** a tag was created in Step 7b:
+Only if `release` argument is present **AND** a tag was created in Step 8b.
+
+#### If on a feature branch:
+
+1. Push the branch:
+
+```bash
+git push -u origin <branch>
+git push origin v<version>
+```
+
+2. Create PR targeting `main`:
+
+```bash
+gh pr create --title "<commit-header>" --body "$(cat <<'EOF'
+## Summary
+<bullet points from commit body>
+
+## Test Plan
+- [ ] Lint and tests pass
+- [ ] Review changes on affected components
+EOF
+)"
+```
+
+3. Merge PR and delete remote branch:
+
+```bash
+gh pr merge <pr-number> --merge --delete-branch
+```
+
+4. Move tag to the merge commit on main:
+
+```bash
+git tag -d v<version>
+git push origin :refs/tags/v<version>
+git tag v<version> <merge-commit-hash>
+git push origin v<version>
+```
+
+5. Delete local feature branch:
+
+```bash
+git branch -d <branch>
+```
+
+#### If already on `main`:
+
+1. Push branch and tag:
+
+```bash
+git push origin main
+git push origin v<version>
+```
+
+#### Then (both cases): Create GitHub release
 
 1. Find the previous RELEASE tag:
 
@@ -149,10 +223,10 @@ Only if `release` argument is present **AND** a tag was created in Step 7b:
 gh release list --limit 1 --json tagName -q '.[0].tagName'
 ```
 
-2. Generate the diff file list and create zip:
+2. Generate diff artifact:
 
 ```bash
-git diff --name-only <last_release_tag>..HEAD | zip -@ release-v<version>-diff.zip
+git diff --name-only <last_release_tag>..v<version> | zip -@ release-v<version>-diff.zip
 ```
 
 3. Build wheel and create GitHub release:
@@ -161,7 +235,7 @@ git diff --name-only <last_release_tag>..HEAD | zip -@ release-v<version>-diff.z
 python3 -m build --wheel --sdist
 gh release create v<version> dist/*.whl dist/*.tar.gz release-v<version>-diff.zip \
   --title "v<version>" \
-  --notes "$(git log <last_release_tag>..HEAD --pretty=format:'- %s' --no-merges)"
+  --notes "$(git log <last_release_tag>..v<version> --pretty=format:'- %s' --no-merges)"
 ```
 
 4. Clean up:
@@ -170,7 +244,7 @@ gh release create v<version> dist/*.whl dist/*.tar.gz release-v<version>-diff.zi
 rm release-v<version>-diff.zip
 ```
 
-### Step 8: Summary
+### Step 9: Summary
 
 ```text
 === Commit Summary ===
@@ -182,6 +256,7 @@ Files committed:
   <file list>
 
 Commit: <hash>
+PR: https://github.com/tcheval/nautobot_route_tracking/pull/<n>  (if release, feature branch)
 Release: https://github.com/tcheval/nautobot_route_tracking/releases/tag/v<version>  (if release)
 
 Next: git push origin <branch>
@@ -193,9 +268,8 @@ Next: git push origin <branch>
 /project:commit              # Standard commit (tag auto if source files changed)
 /project:commit fix          # Force type "fix"
 /project:commit docs         # Force type "docs"
-/project:commit release      # Commit + tag + GitHub release with wheel artifact
-/project:commit push         # Commit + push
-/project:commit push release # Commit + push + release
+/project:commit push         # Commit + push (no PR, no release)
+/project:commit release      # Full release: commit → push → PR → merge → tag → GitHub release
 ```
 
 ## Conventional Commit Types
@@ -212,5 +286,6 @@ Next: git push origin <branch>
 ## Safety
 
 - Will NOT commit if lint fails
+- Will NOT commit if tests fail
 - Will NOT force push
 - Always shows diff before confirming

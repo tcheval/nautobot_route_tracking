@@ -58,10 +58,7 @@ def count_conventions(root: Path) -> int:
     conv = root / "_convention"
     if not conv.exists():
         return 0
-    return len([
-        f for f in conv.glob("_*.md")
-        if f.name != "_domain-template.md"
-    ])
+    return len([f for f in conv.glob("_*.md") if f.name != "_domain-template.md"])
 
 
 def count_agents(root: Path) -> int:
@@ -190,9 +187,7 @@ def display_metrics(metrics: dict) -> None:
     """Print metrics as markdown tables."""
     resolution_rate = 0
     if metrics["findings_total"] > 0:
-        resolution_rate = round(
-            metrics["findings_resolved"] / metrics["findings_total"] * 100
-        )
+        resolution_rate = round(metrics["findings_resolved"] / metrics["findings_total"] * 100)
 
     print("## Project Metrics\n")
     print("### Code\n")
@@ -217,9 +212,7 @@ def display_metrics(metrics: dict) -> None:
     print(f"| Agents | {metrics['agents']} |")
     print(f"| Commands | {metrics['commands']} |")
     print()
-    print(
-        f"### Compliance ({metrics['compliance_pass']}/{metrics['compliance_total']})\n"
-    )
+    print(f"### Compliance ({metrics['compliance_pass']}/{metrics['compliance_total']})\n")
     print("| Check | Status |")
     print("| --- | --- |")
     for check, status in metrics["compliance_details"].items():
@@ -245,8 +238,12 @@ def compare_snapshots(current: dict, snapshot_path: Path) -> None:
     print("| Metric | Previous | Current | Delta |")
     print("| --- | --- | --- | --- |")
     for key in [
-        "source_files", "test_files", "test_functions",
-        "findings_open", "findings_resolved", "compliance_pass",
+        "source_files",
+        "test_files",
+        "test_functions",
+        "findings_open",
+        "findings_resolved",
+        "compliance_pass",
     ]:
         prev = previous.get(key, 0)
         curr = current.get(key, 0)
@@ -261,9 +258,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Project health metrics")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--save", action="store_true", help="Save snapshot")
-    parser.add_argument(
-        "--compare", type=str, metavar="FILE", help="Compare against snapshot"
-    )
+    parser.add_argument("--compare", type=str, metavar="FILE", help="Compare against snapshot")
     args = parser.parse_args()
 
     root = find_project_root()

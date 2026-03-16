@@ -7,7 +7,7 @@ description: "Single-screen project status dashboard"
 
 ## Purpose
 
-Display a single-screen view of the project's current state: version, quality, findings, compliance, and git status.
+Display a single-screen view of the project's current state: version, quality, findings, compliance, latest audit, and git status.
 
 ## Execution
 
@@ -31,7 +31,15 @@ git rev-parse --abbrev-ref HEAD
 python3 scripts/metrics.py --json
 ```
 
-4. **Open findings** — Read `reports/findings/registry.yml` and count findings where `status: open`, grouped by severity.
+4. **Latest audit** — Find and read the most recent audit report:
+
+```bash
+ls -t reports/audit/audit_*.md 2>/dev/null | head -1
+```
+
+Read the first 15 lines to extract the title, date, and score.
+
+5. **Open findings** — Read `reports/findings/registry.yml` and count findings where `status: open`, grouped by severity. If registry doesn't exist, show "No findings registry — run `/project:findings sync`".
 
 ### Step 2: Format Output
 
@@ -39,6 +47,8 @@ Present the data using this format:
 
 ```markdown
 # Project Status
+
+Health: GREEN (score 8.5/10)
 
 | Field | Value |
 | --- | --- |
@@ -75,6 +85,11 @@ Resolution rate: N%
 | `register_jobs()` present | PASS/FAIL |
 | English-only docs | PASS/FAIL |
 
+## Latest Audit
+
+**<audit_title>** — <date>
+Score: X/10 | Criticals: N | Warnings: N
+
 ## Git Status
 
 <output of git status --short, or "Clean working tree">
@@ -86,8 +101,16 @@ Resolution rate: N%
 
 ### Step 3: Health Indicator
 
-At the top of the output, add a health indicator:
+At the top of the output, add a health indicator based on:
 
 - **GREEN** — 0 CRITICAL findings, compliance >= 3/4
 - **YELLOW** — 1-2 CRITICAL findings OR compliance 2/4
 - **RED** — 3+ CRITICAL findings OR compliance < 2/4
+
+The score comes from the latest audit report if available, otherwise omit it.
+
+Display as:
+
+```markdown
+Health: GREEN (score 8.5/10)
+```

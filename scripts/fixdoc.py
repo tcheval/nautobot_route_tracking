@@ -100,24 +100,15 @@ def check_language(path: Path) -> list[str]:
 
     fr_matches = FR_PATTERN.findall(content_no_code)
     if len(fr_matches) >= 3:
-        warnings.append(
-            f"  Language warning: {path} may contain French "
-            f"(found: {', '.join(fr_matches[:5])})"
-        )
+        warnings.append(f"  Language warning: {path} may contain French (found: {', '.join(fr_matches[:5])})")
 
     es_matches = ES_PATTERN.findall(content_no_code)
     if len(es_matches) >= 3:
-        warnings.append(
-            f"  Language warning: {path} may contain Spanish "
-            f"(found: {', '.join(es_matches[:5])})"
-        )
+        warnings.append(f"  Language warning: {path} may contain Spanish (found: {', '.join(es_matches[:5])})")
 
     de_matches = DE_PATTERN.findall(content_no_code)
     if len(de_matches) >= 3:
-        warnings.append(
-            f"  Language warning: {path} may contain German "
-            f"(found: {', '.join(de_matches[:5])})"
-        )
+        warnings.append(f"  Language warning: {path} may contain German (found: {', '.join(de_matches[:5])})")
 
     return warnings
 

@@ -1,12 +1,19 @@
 ---
 name: review
-description: Review previous audit and track remediation progress
+description: Review previous audit/analysis and track remediation progress
 arguments: $1
 ---
 
 # Review
 
-Review a previous audit report and track remediation progress.
+Review a previous audit or analysis report and track remediation progress.
+
+## Purpose
+
+- Follow up on audit findings
+- Check what has been fixed
+- Update remediation status
+- Cross-reference with the findings registry
 
 ## Execution
 
@@ -22,43 +29,44 @@ cat reports/audit/$1
 
 If no report found, display: "No audit reports found. Run `/project:audit` first."
 
-### Step 2: Cross-Reference Findings Registry
+### Step 2: Parse Action Items
 
-Load the findings registry and compare with audit report:
-
-```bash
-python scripts/findings.py show --all
-```
-
-Check which audit findings have been added to the registry and which are missing. Add any missing findings:
-
-```bash
-python scripts/findings.py sync
-```
-
-### Step 3: Parse Action Items
-
-Extract all items from "Recommended Actions" table:
+Extract all items from "Recommended Actions" or "Action Items" tables:
 
 - CRITICAL
 - WARNING
 - INFO
 
+### Step 3: Cross-Reference Findings Registry
+
+Read `reports/findings/registry.yml` if it exists and cross-reference with the audit report:
+
+- Match audit findings to registry entries by title/file
+- Identify findings that have been resolved since the audit
+- Identify new findings not yet in the registry (suggest `/project:findings sync`)
+- If registry doesn't exist or is empty, note: "Findings registry empty — run `/project:findings sync` to populate"
+
 ### Step 4: Check Remediation Status
 
-For each action item, verify if it has been addressed by checking the codebase:
+For each action item, verify if it has been addressed:
 
 ```text
-| Issue | Status | Evidence |
-|-------|--------|----------|
-| "Missing validation for X" | FIXED | file exists at expected path |
-| "Hardcoded value in Y" | OPEN | file:line still has the issue |
+| Issue | Status | Evidence | Finding ID |
+|-------|--------|----------|------------|
+| "Missing validation for X" | FIXED | file exists at expected path | F-012 |
+| "Hardcoded value in Y" | OPEN | file:line still has the issue | F-003 |
 ```
+
+For each item:
+
+- Check if the file/code mentioned still has the issue
+- If a matching Finding ID exists in the registry, include it
+- Mark as FIXED or OPEN based on evidence
 
 For fixed items, resolve them in the registry:
 
 ```bash
-python scripts/findings.py resolve F-XXX --reason "Fixed in commit <hash>"
+python3 scripts/findings.py resolve F-XXX --reason "Fixed in commit <hash>"
 ```
 
 ### Step 5: Generate Review Report
@@ -67,9 +75,19 @@ python scripts/findings.py resolve F-XXX --reason "Fixed in commit <hash>"
 # Audit Review
 
 ## Report Reviewed
-- File: <path>
-- Original Date: <date>
-- Review Date: <today>
+- File: reports/audit/audit_20260313.md
+- Original Date: 2026-03-13
+- Review Date: 2026-03-20
+
+## Findings Registry Status
+
+| Metric | Value |
+| --- | --- |
+| Total findings | N |
+| Open | N |
+| Resolved | N |
+| Resolution rate | N% |
+| From this audit | N (N open, N resolved) |
 
 ## Remediation Progress
 
@@ -82,22 +100,26 @@ python scripts/findings.py resolve F-XXX --reason "Fixed in commit <hash>"
 ## Still Open
 
 ### CRITICAL
-- [ ] Issue description
+- [ ] Issue description -> file:line (Finding ID: F-NNN)
 
 ### WARNING
-- [ ] Issue description
+- [ ] Issue description -> file:line (Finding ID: F-NNN)
 
 ## Completed Since Last Audit
-- [x] Fixed: description
+- [x] Fixed: description (F-NNN)
+- [x] Fixed: description (F-NNN)
 
 ## Recommendation
-- Fix remaining CRITICAL items, then re-run `/project:audit`
+- Run `/project:audit` again after fixing remaining CRITICAL items
+- Run `/project:findings sync` if new findings detected not in registry
 ```
+
+Save to `reports/audit/review_<timestamp>.md`
 
 ### Step 6: Display Findings Summary
 
 ```bash
-python scripts/findings.py stats
+python3 scripts/findings.py stats
 ```
 
 ## Workflow
@@ -108,4 +130,6 @@ python scripts/findings.py stats
 /project:review          # Check progress
 # ... fix more ...
 /project:review          # Verify all done
+/project:findings stats  # Overall findings health
+/project:status          # Full project dashboard
 ```
